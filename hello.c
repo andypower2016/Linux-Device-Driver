@@ -5,7 +5,7 @@
 
 static int hello_init(void)
 {
-	printk("hello world\n");
+	printk("hello world\n");	// prints message to the kernel log
 	return 0;
 }
 
