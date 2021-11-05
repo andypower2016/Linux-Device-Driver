@@ -4,7 +4,7 @@ A simple guide to build module in Linux
 1) Make
 2) insmod hello.ko
 3) rmmod hello.ko
-4) dmesg | tail 
+4) dmesg | tail  // display kernel's latest message, prints out the kernel message
 
 [ 3693.929757] Code: 00 c3 66 2e 0f 1f 84 00 00 00 00 00 90 f3 0f 1e fa 48 89 f8 48 89 f7 48 89 d6 48 89 ca 4d 89 c2 4d 89 c8 4c 8b 4c 24 08 0f 05 <48> 3d 01 f0 ff ff 73 01 c3 48 8b 0d c3 f5 0c 00 f7 d8 64 89 01 48
 [ 3693.929758] RSP: 002b:00007ffc5d0db528 EFLAGS: 00000246 ORIG_RAX: 0000000000000139
