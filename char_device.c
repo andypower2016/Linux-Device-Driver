@@ -97,6 +97,7 @@ ssize_t read(struct file *pfile, char __user *buffer, size_t length, loff_t *off
 	// Take data from kernel space to user space
 	// copy_from_user(destination, source, sizeToTransfer)
 	ret = copy_to_user(buffer, device.buffer, length);
+	return length;
 }
 
 // Called when user wants to send data to device
@@ -115,7 +116,7 @@ int release(struct inode *pinode, struct file *pfile)
 {
 	printk(KERN_ALERT "Inside %s Function\n", __FUNCTION__);
 	up(&device.sem);  // sem = sem + 1
-	printk(KERN_INFO "Closed device\n", __FUNCTION__);
+	printk(KERN_INFO "Closed device\n");
 	return 0;
 }
 
