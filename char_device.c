@@ -61,9 +61,8 @@ static __init int chrdev_init(void)
 	   return ret;
 	}
 	
-	// Initialize semaphore
+	//(4) Initialize semaphore
 	sema_init(&device.sem, 1); // initial value one, means nothing is locked
-	
 	return 0;
 }
 
@@ -84,7 +83,6 @@ int open(struct inode *pinode, struct file *pfile)
 	   printk(KERN_ALERT "can't lock device when open\n");
 	   return ret;	
 	}
-	
 	printk(KERN_INFO "opened device ! \n");
 	return 0;
 }
@@ -93,22 +91,22 @@ int open(struct inode *pinode, struct file *pfile)
 ssize_t read(struct file *pfile, char __user *buffer, size_t length, loff_t *offset)
 {
 	printk(KERN_ALERT "Inside %s Function\n", __FUNCTION__);
-	printk(KERN_INFO "Reading from device\n");
+	printk(KERN_INFO "Reading from device, data=%s\n", device.buffer);
 	// Take data from kernel space to user space
 	// copy_from_user(destination, source, sizeToTransfer)
 	ret = copy_to_user(buffer, device.buffer, length);
-	return length;
+	return ret;
 }
 
 // Called when user wants to send data to device
 ssize_t write(struct file *pfile, const char __user *buffer, size_t length, loff_t *offset)
 {
 	printk(KERN_ALERT "Inside %s Function\n", __FUNCTION__);
-	printk(KERN_INFO "Writing to device\n");
+	printk(KERN_INFO "Writing to device , data=%s\n", buffer);
 	// Take data from user space to kernel space
 	// copy_from_user(destination, source, sizeToTransfer)
 	ret = copy_from_user(device.buffer, buffer, length);
-	return length;
+	return ret;
 }
 
 
