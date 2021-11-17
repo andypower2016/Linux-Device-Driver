@@ -1,6 +1,6 @@
 KERNELBUILD := /lib/modules/$(shell uname -r)/build
 
-obj-m := hello.o
+obj-m := hello.o char_device.o
 
 default:
 	make -C $(KERNELBUILD) M=$(PWD) modules
