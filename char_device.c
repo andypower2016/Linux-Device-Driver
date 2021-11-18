@@ -6,30 +6,7 @@
 #include <asm/uaccess.h>	// copy_to_user, copy_from_user (used to map data from user space to kernel space)
 
 #include <linux/slab.h> // kmalloc/kfree
-
-#define DEVICE_NAME "char_device"
-
-// fake char device structure
-struct char_device 
-{
-    char buffer[256];	   // device data
-    struct semaphore sem; // semaphore, for locking the device
-    struct cdev *cdev;    // cdev
-};
-
-static struct char_device *fake_device = NULL;
-
-// To register a fake char device, we need cdev and other variables
-static int major_num; // will store our major number, extracted from dev_t using macro - mknod /dev/device_file c major minor
-static int ret;       // holds the return value of each kernel function
-static dev_t dev_num; // device number
-
-
-// file operations
-int open(struct inode *, struct file *);
-ssize_t read(struct file *, char __user *, size_t, loff_t *);
-ssize_t write(struct file *, const char __user *, size_t, loff_t *);
-int release(struct inode *, struct file *);
+#include "char_device.h"
 
 struct file_operations fileop = 
 {
@@ -133,16 +110,17 @@ static __exit void chrdev_exit(void)
 
 // Called when device is called by kernel
 int open(struct inode *pinode, struct file *pfile)
-{
+{ 
 	printk(KERN_ALERT "Inside %s Function\n", __FUNCTION__);
 	// Only allow one process to open this device by using a semaphore as a mutex
-	if(down_interruptible(&fake_device->sem) != 0) // sem = sem - 1
+	ret = down_interruptible(&fake_device->sem);
+	if(ret != 0) // sem = sem - 1
 	{
 	   printk(KERN_ALERT "can't lock device when open\n");
-	   return -1;	
+	   return ret;	
 	}
 	printk(KERN_INFO "opened device ! \n");
-	return 0;
+	return ret;
 }
 
 // Called when user wants to get information from the device
