@@ -15,8 +15,7 @@ struct file_operations fileop =
     .read = read,
     .write = write,
     .release = release,
-    //.ioctl = ioctl,
-    //.llseek = llseek,
+    .llseek = llseek,
 };
 
 static void cleanup_device(void)
@@ -44,7 +43,7 @@ static int setup_device(void)
 	
 	// init data
 	sprintf(fake_device->buffer, "Init data for device");
-	
+	fake_device->size = 0;
 	// init semaphore
 	sema_init(&fake_device->sem, 1); // initial value one, means nothing is locked
 	
@@ -126,22 +125,34 @@ int open(struct inode *pinode, struct file *pfile)
 // Called when user wants to get information from the device
 ssize_t read(struct file *pfile, char __user *buffer, size_t length, loff_t *offset)
 {
+	if(down_interruptible(&fake_device->sem)) 
+	{
+	    return -ERESTARTSYS;
+	}
 	printk(KERN_ALERT "Inside %s Function\n", __FUNCTION__);
 	printk(KERN_INFO "Reading from device, data=%s\n", fake_device->buffer);
 	// Take data from kernel space to user space
 	// copy_from_user(destination, source, sizeToTransfer)
 	ret = copy_to_user(buffer, fake_device->buffer, length);
+	up(&fake_device->sem);
 	return ret;
 }
 
 // Called when user wants to send data to device
 ssize_t write(struct file *pfile, const char __user *buffer, size_t length, loff_t *offset)
 {
+	if(down_interruptible(&fake_device->sem)) 
+	{
+	    return -ERESTARTSYS;
+	}
 	printk(KERN_ALERT "Inside %s Function\n", __FUNCTION__);
 	printk(KERN_INFO "Writing to device , data=%s\n", buffer);
 	// Take data from user space to kernel space
 	// copy_from_user(destination, source, sizeToTransfer)
 	ret = copy_from_user(fake_device->buffer, buffer, length);
+	// update data size 
+	fake_device->size = *offset;	
+	up(&fake_device->sem);
 	return ret;
 }
 
@@ -154,13 +165,34 @@ int release(struct inode *pinode, struct file *pfile)
 	return 0;
 }
 
-/*
-loff_t llseek(struct file* pfile, loff_t *f_pos, int n)
-{
 
-	return 0;
+loff_t llseek(struct file* pfile, loff_t offset, int op)
+{
+	struct char_device *dev = pfile->private_data;
+	loff_t newpos;
+	switch(op)
+	{
+	  case 0: // SEEK_SET
+	     newpos = offset;
+	     break;
+	  case 1: // SEEK_CUR
+	     newpos = pfile->f_pos + offset;
+	     break;
+	  case 2: // SEEK_END
+	     newpos = dev->size + offset;
+	     break;
+	  default:
+	      return -EINVAL;
+	}
+	if(newpos < 0)
+	{
+	    return -EINVAL;
+	}
+	pfile->f_pos = newpos;
+	return newpos;
 }
 
+/*
 int ioctl(struct inode* pinode, struct file* pfile, unsigned int f_flags, unsigned long )
 {
 	

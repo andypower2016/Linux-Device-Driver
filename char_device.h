@@ -7,6 +7,7 @@
 struct char_device 
 {
     char buffer[256];	   // device data
+    int size;		   // ammount of data
     struct semaphore sem; // semaphore, for locking the device
     struct cdev *cdev;    // cdev
 };
@@ -22,6 +23,6 @@ int open(struct inode *, struct file *);
 ssize_t read(struct file *, char __user *, size_t, loff_t *);
 ssize_t write(struct file *, const char __user *, size_t, loff_t *);
 int release(struct inode *, struct file *);
-
+loff_t llseek(struct file *, loff_t, int);
 
 #endif
