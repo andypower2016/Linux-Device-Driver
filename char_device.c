@@ -73,6 +73,7 @@ static __init int chrdev_init(void)
 	major_num = MAJOR(dev_num); // extracts the major number and store in variable
 	printk(KERN_INFO "Major number=%d\n", major_num);
 	printk(KERN_INFO "Use mknod /dev/%s c %d 0\" for device file\n", DEVICE_NAME, major_num);
+	
 	// setup device dynamically
 	ret = setup_device();
 	return ret;
@@ -106,7 +107,7 @@ ssize_t read(struct file *pfile, char __user *buffer, size_t length, loff_t *f_p
 	}
 	printk(KERN_ALERT "Inside %s Function\n", __FUNCTION__);
 	printk(KERN_INFO "Reading from device, data=%s\n", fake_device->buffer);
-	printk("loff_t=%lld\n", *f_pos);
+	printk("pfile->f_pos=%lld loff_t=%lld\n", pfile->f_pos,  *f_pos);
 	// Take data from kernel space to user space
 	// copy_from_user(destination, source, sizeToTransfer)	
 	struct char_device *dev = pfile->private_data;
@@ -130,7 +131,7 @@ ssize_t write(struct file *pfile, const char __user *buffer, size_t length, loff
 	}
 	printk(KERN_ALERT "Inside %s Function\n", __FUNCTION__);
 	printk(KERN_INFO "Writing to device , data=%s\n", buffer);
-	printk("loff_t=%lld\n", *f_pos);
+	printk("pfile->f_pos=%lld loff_t=%lld\n", pfile->f_pos,  *f_pos);
 	// Take data from user space to kernel space
 	// copy_from_user(destination, source, sizeToTransfer)
 	struct char_device *dev = pfile->private_data;
@@ -140,8 +141,12 @@ ssize_t write(struct file *pfile, const char __user *buffer, size_t length, loff
 	   ret = -EFAULT;
 	   goto end;
 	}
-	dev->size += length;	
-	printk("write length=%d, dev->size=%d\n", length, dev->size);
+	*f_pos += length;
+	if(*f_pos > dev->size)
+	{
+	   dev->size = *f_pos;
+	}	
+	printk("write length=%ld, dev->size=%d\n", length, dev->size);
 end:
 	up(&fake_device->sem);
 	return ret;
