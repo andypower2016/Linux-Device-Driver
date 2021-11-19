@@ -8,6 +8,8 @@
 #include <linux/slab.h> // kmalloc/kfree
 #include "char_device.h"
 
+int ret;
+
 struct file_operations fileop = 
 {
     .owner = THIS_MODULE,
@@ -15,7 +17,7 @@ struct file_operations fileop =
     .read = read,
     .write = write,
     .release = release,
-    .llseek = llseek,
+    .llseek = seek,
 };
 
 static void cleanup_device(void)
@@ -111,19 +113,12 @@ static __exit void chrdev_exit(void)
 int open(struct inode *pinode, struct file *pfile)
 { 
 	printk(KERN_ALERT "Inside %s Function\n", __FUNCTION__);
-	// Only allow one process to open this device by using a semaphore as a mutex
-	ret = down_interruptible(&fake_device->sem);
-	if(ret != 0) // sem = sem - 1
-	{
-	   printk(KERN_ALERT "can't lock device when open\n");
-	   return ret;	
-	}
 	printk(KERN_INFO "opened device ! \n");
 	return ret;
 }
 
 // Called when user wants to get information from the device
-ssize_t read(struct file *pfile, char __user *buffer, size_t length, loff_t *offset)
+ssize_t read(struct file *pfile, char __user *buffer, size_t length, loff_t *f_pos)
 {
 	if(down_interruptible(&fake_device->sem)) 
 	{
@@ -134,12 +129,19 @@ ssize_t read(struct file *pfile, char __user *buffer, size_t length, loff_t *off
 	// Take data from kernel space to user space
 	// copy_from_user(destination, source, sizeToTransfer)
 	ret = copy_to_user(buffer, fake_device->buffer, length);
+	if(ret)
+	{
+	   ret = -EFAULT;
+	   goto end;
+	}
+	*f_pos += length;
+end:
 	up(&fake_device->sem);
 	return ret;
 }
 
 // Called when user wants to send data to device
-ssize_t write(struct file *pfile, const char __user *buffer, size_t length, loff_t *offset)
+ssize_t write(struct file *pfile, const char __user *buffer, size_t length, loff_t *f_pos)
 {
 	if(down_interruptible(&fake_device->sem)) 
 	{
@@ -150,8 +152,14 @@ ssize_t write(struct file *pfile, const char __user *buffer, size_t length, loff
 	// Take data from user space to kernel space
 	// copy_from_user(destination, source, sizeToTransfer)
 	ret = copy_from_user(fake_device->buffer, buffer, length);
-	// update data size 
-	fake_device->size = *offset;	
+	if(ret)
+	{
+	   ret = -EFAULT;
+	   goto end;
+	}
+	*f_pos += length;
+	fake_device->size = *f_pos;	
+end:
 	up(&fake_device->sem);
 	return ret;
 }
@@ -160,17 +168,16 @@ ssize_t write(struct file *pfile, const char __user *buffer, size_t length, loff
 int release(struct inode *pinode, struct file *pfile)
 {
 	printk(KERN_ALERT "Inside %s Function\n", __FUNCTION__);
-	up(&fake_device->sem);  // sem = sem + 1
 	printk(KERN_INFO "Closed device\n");
 	return 0;
 }
 
 
-loff_t llseek(struct file* pfile, loff_t offset, int op)
+loff_t seek(struct file* pfile, loff_t offset, int option)
 {
 	struct char_device *dev = pfile->private_data;
 	loff_t newpos;
-	switch(op)
+	switch(option)
 	{
 	  case 0: // SEEK_SET
 	     newpos = offset;
