@@ -1,9 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <string.h>
+#include <unistd.h>
 
 #define DEVICE_NAME "/dev/char_device"
-#define buff_size 256
+#define buff_size 4096
 
 int main(int argc, char** argv)
 {
@@ -18,14 +20,16 @@ int main(int argc, char** argv)
     	exit(-1); 	
     } 
     
-    while(1)
+    do
     {
     	memset(buffer, '\0', sizeof(buffer));
-    	printf("enter r/w/e\n");
+    	if(ch != '\n')
+    	  printf("enter r/w/e\n");
     	scanf("%c", &ch);
     	switch(ch)
     	{
            case 'r':
+             lseek(fd, 0, SEEK_SET);	// seek fd to begin, read out the entire device buffer
              ret = read(fd, buffer, sizeof(buffer));
              if(ret == -1)
              {
@@ -33,10 +37,11 @@ int main(int argc, char** argv)
              }
              printf("read from device = %s\n", buffer);
              break;	
-           case 'w':
+           case 'w':        
+             lseek(fd, 0, SEEK_END); // seek fd to end, append data to device buffer     
              printf("enter data to write\n");
-             scanf("%s", buffer);        
-             ret = write(fd, buffer, sizeof(buffer));
+             scanf("%s", buffer); 
+             ret = write(fd, buffer, strlen(buffer));
              if(ret == -1)
              {
              	printf("write fail\n");
@@ -48,8 +53,9 @@ int main(int argc, char** argv)
            	return 0;	
            default:
              break;	
-    	}
-    }
+    	} 
+    	
+    }while(1);
     close(fd);   
     return 0;
 }

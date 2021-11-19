@@ -44,8 +44,9 @@ static int setup_device(void)
 	memset(fake_device, 0, sizeof(struct char_device));	
 	
 	// init data
-	sprintf(fake_device->buffer, "Init data for device");
-	fake_device->size = 0;
+	char str[20] = "Init data for device";
+	memcpy(fake_device->buffer, str, sizeof(str));
+	fake_device->size = sizeof(str);
 	// init semaphore
 	sema_init(&fake_device->sem, 1); // initial value one, means nothing is locked
 	
@@ -108,13 +109,16 @@ static __exit void chrdev_exit(void)
 	printk(KERN_ALERT "Unload Device Complete\n");
 }
 
+
 // Called when device is called by kernel
 int open(struct inode *pinode, struct file *pfile)
 { 
 	printk(KERN_ALERT "Inside %s Function\n", __FUNCTION__);
 	struct char_device *dev = container_of(pinode->i_cdev, struct char_device, cdev);
 	pfile->private_data = dev;
-	printk(KERN_INFO "opened device ! \n");
+	pfile->f_pos = dev->size;
+	
+	printk(KERN_INFO "opened device ! device datasize=%d\n", dev->size);
 	return ret;
 }
 
@@ -127,17 +131,16 @@ ssize_t read(struct file *pfile, char __user *buffer, size_t length, loff_t *f_p
 	}
 	printk(KERN_ALERT "Inside %s Function\n", __FUNCTION__);
 	printk(KERN_INFO "Reading from device, data=%s\n", fake_device->buffer);
-	
+	printk("loff_t=%lld\n", *f_pos);
 	// Take data from kernel space to user space
 	// copy_from_user(destination, source, sizeToTransfer)	
 	struct char_device *dev = pfile->private_data;
-	ret = copy_to_user(buffer, dev->buffer, length);
+	ret = copy_to_user(buffer, dev->buffer+*f_pos, length);
 	if(ret)
 	{
 	   ret = -EFAULT;
 	   goto end;
 	}
-	*f_pos += length;
 end:
 	up(&fake_device->sem);
 	return ret;
@@ -152,17 +155,18 @@ ssize_t write(struct file *pfile, const char __user *buffer, size_t length, loff
 	}
 	printk(KERN_ALERT "Inside %s Function\n", __FUNCTION__);
 	printk(KERN_INFO "Writing to device , data=%s\n", buffer);
+	printk("loff_t=%lld\n", *f_pos);
 	// Take data from user space to kernel space
 	// copy_from_user(destination, source, sizeToTransfer)
 	struct char_device *dev = pfile->private_data;
-	ret = copy_from_user(dev->buffer, buffer, length);
+	ret = copy_from_user(dev->buffer+*f_pos, buffer, length);
 	if(ret)
 	{
 	   ret = -EFAULT;
 	   goto end;
 	}
-	*f_pos += length;
-	fake_device->size = *f_pos;	
+	dev->size += length;	
+	printk("write length=%d, dev->size=%d\n", length, dev->size);
 end:
 	up(&fake_device->sem);
 	return ret;
@@ -179,7 +183,9 @@ int release(struct inode *pinode, struct file *pfile)
 
 loff_t seek(struct file* pfile, loff_t offset, int option)
 {
+	printk(KERN_ALERT "Inside %s Function\n", __FUNCTION__);
 	struct char_device *dev = pfile->private_data;
+	
 	loff_t newpos;
 	switch(option)
 	{
@@ -200,6 +206,7 @@ loff_t seek(struct file* pfile, loff_t offset, int option)
 	    return -EINVAL;
 	}
 	pfile->f_pos = newpos;
+	printk("new file pos=%lld\n", newpos);
 	return newpos;
 }
 
