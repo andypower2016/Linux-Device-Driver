@@ -24,7 +24,7 @@ static void cleanup_device(void)
 {
 	if(fake_device)
 	{
-	   cdev_del(fake_device->cdev);
+	   cdev_del(&fake_device->cdev);
 	   kfree(fake_device);
 	}
 	unregister_chrdev_region(dev_num, 1);
@@ -50,10 +50,9 @@ static int setup_device(void)
 	sema_init(&fake_device->sem, 1); // initial value one, means nothing is locked
 	
 	// init cdev
-	fake_device->cdev = cdev_alloc(); 
-	fake_device->cdev->ops = &fileop;
-	fake_device->cdev->owner = THIS_MODULE;
-	ret = cdev_add(fake_device->cdev, dev_num, 1);
+	cdev_init(&fake_device->cdev, &fileop);
+	fake_device->cdev.owner = THIS_MODULE;
+	ret = cdev_add(&fake_device->cdev, dev_num, 1);
 	if(ret < 0)
 	{
 	   printk(KERN_ALERT "Fail to add cdev to kernel\n");
@@ -113,6 +112,8 @@ static __exit void chrdev_exit(void)
 int open(struct inode *pinode, struct file *pfile)
 { 
 	printk(KERN_ALERT "Inside %s Function\n", __FUNCTION__);
+	struct char_device *dev = container_of(pinode->i_cdev, struct char_device, cdev);
+	pfile->private_data = dev;
 	printk(KERN_INFO "opened device ! \n");
 	return ret;
 }
@@ -126,9 +127,11 @@ ssize_t read(struct file *pfile, char __user *buffer, size_t length, loff_t *f_p
 	}
 	printk(KERN_ALERT "Inside %s Function\n", __FUNCTION__);
 	printk(KERN_INFO "Reading from device, data=%s\n", fake_device->buffer);
+	
 	// Take data from kernel space to user space
-	// copy_from_user(destination, source, sizeToTransfer)
-	ret = copy_to_user(buffer, fake_device->buffer, length);
+	// copy_from_user(destination, source, sizeToTransfer)	
+	struct char_device *dev = pfile->private_data;
+	ret = copy_to_user(buffer, dev->buffer, length);
 	if(ret)
 	{
 	   ret = -EFAULT;
@@ -151,7 +154,8 @@ ssize_t write(struct file *pfile, const char __user *buffer, size_t length, loff
 	printk(KERN_INFO "Writing to device , data=%s\n", buffer);
 	// Take data from user space to kernel space
 	// copy_from_user(destination, source, sizeToTransfer)
-	ret = copy_from_user(fake_device->buffer, buffer, length);
+	struct char_device *dev = pfile->private_data;
+	ret = copy_from_user(dev->buffer, buffer, length);
 	if(ret)
 	{
 	   ret = -EFAULT;
