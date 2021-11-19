@@ -73,33 +73,8 @@ static __init int chrdev_init(void)
 	major_num = MAJOR(dev_num); // extracts the major number and store in variable
 	printk(KERN_INFO "Major number=%d\n", major_num);
 	printk(KERN_INFO "Use mknod /dev/%s c %d 0\" for device file\n", DEVICE_NAME, major_num);
-	
-	/*
-	// (2) create cdev structure, initialize cdev
-	mcdev = cdev_alloc(); 
-	mcdev->ops = &fileop;
-	mcdev->owner = THIS_MODULE;
-	// add cdev to kernel
-	// int cdev_add(struct cdev* dev, dev_t num, unsigned int count)
-	ret = cdev_add(mcdev, dev_num, 1);
-	if(ret < 0)
-	{
-	   printk(KERN_ALERT "Fail to add cdev to kernel\n");
-	   return ret;
-	}
-	
-	//(4) Initialize semaphore
-	sema_init(&device.sem, 1); // initial value one, means nothing is locked
-	
-	// init device data
-	sprintf(device.buffer, "Init data for device");
-	
-	*/
-	
-	
 	// setup device dynamically
 	ret = setup_device();
-	
 	return ret;
 }
 
