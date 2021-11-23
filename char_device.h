@@ -9,7 +9,7 @@ struct char_device
     char buffer[4096];	   // device data
     int size;		   // ammount of data
     struct semaphore sem; // semaphore, for locking the device
-    struct cdev cdev;    // cdev
+    struct cdev mcdev;    // cdev
 };
 struct char_device *fake_device = NULL;
 
