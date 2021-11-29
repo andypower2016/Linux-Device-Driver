@@ -4,7 +4,7 @@
 #include <linux/seq_file.h> /* for seq_file */
 #include <linux/time.h>
 #include <linux/timer.h>
-＃include <linux/sched.h>
+#include <linux/sched.h>
 #include <linux/completion.h>
 
 #define PROC_NAME "iter"
@@ -82,16 +82,15 @@ static int seq_show(struct seq_file *s, void *v)
     int n = (int)v;
     seq_printf(s, "data[%d]:%s  \n", n, data[n]);
     
-    
-    unsigned long now = jiffies;
-    seq_printf(s, "jiffies before delay = %ld\n", now);
-    schedule_timeout(delay);
-    now = jiffies;
-    seq_printf(s, "jiffies after delay = %ld\n", now);
-    
-    if(!g_contex.t.seq)
+    if(!g_contex.seq)
     {
-        g_contex.t.seq = s;
+        unsigned long now = jiffies;
+        seq_printf(s, "jiffies before delay = %ld\n", now);
+        schedule_timeout(delay);
+        now = jiffies;
+        seq_printf(s, "jiffies after delay = %ld\n", now);
+        
+        g_contex.seq = s;
         add_timer(&g_contex.t);
         if (wait_for_completion_interruptible(&g_contex.done)) 
         {
