@@ -6,8 +6,8 @@
 #define PROC_NAME "iter"
 #define dbg(fmt,args...) printk("[%s]:%d => "fmt,__FUNCTION__,__LINE__,##args)
 #define DBG() printk("[%s]:%d => \n",__FUNCTION__,__LINE__)
- 
-static char *data[3]={"string1","string2","string3"};
+const int data_size = 3;
+static char data[3] = {"string1", "string2", "string3"};
  
 /**
 * This function is called at the beginning of a sequence.
@@ -19,7 +19,9 @@ static char *data[3]={"string1","string2","string3"};
 static void *seq_start(struct seq_file *s, loff_t *pos) 
 { 
     DBG();
-    if (*pos>=3) return NULL;
+    if (*pos >= data_size) 
+       return NULL;
+    
     return (void *)((unsigned long) *pos);
 } 
 /**
