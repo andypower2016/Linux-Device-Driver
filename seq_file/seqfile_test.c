@@ -2,13 +2,16 @@
 #include <linux/module.h> /* Specifically, a module */
 #include <linux/proc_fs.h> /* Necessary because we use proc fs */
 #include <linux/seq_file.h> /* for seq_file */
- 
+#include <linux/time.h>
+#include <linux/timer.h>
+＃include <linux/sched.h>
+
 #define PROC_NAME "iter"
 #define dbg(fmt,args...) printk("[%s]:%d => "fmt,__FUNCTION__,__LINE__,##args)
 #define DBG() printk("[%s]:%d => \n",__FUNCTION__,__LINE__)
 const int data_size = 3;
 static char data[3] = {"string1", "string2", "string3"};
- 
+const unsigned long delay = 3 * HZ;
 /**
 * This function is called at the beginning of a sequence.
 * ie, when:
@@ -50,9 +53,14 @@ static void seq_stop(struct seq_file *s, void *v)
 static int seq_show(struct seq_file *s, void *v) 
 { 
     //unsigned long n;
-    int n = (int)v;
     DBG();
-    seq_printf(s, "data[%d]:%s\n", n, data[n]);
+    int n = (int)v;
+    unsigned long now = jiffies;
+    seq_printf(s, "jiffies before delay = %ld\n", now);
+    schedule_timeout(delay);
+    now = jiffies;
+    seq_printf(s, "jiffies after delay = %ld\n", now);
+    seq_printf(s, "data[%d]:%s  \n", n, data[n]);
     return 0;
 } 
 /**
