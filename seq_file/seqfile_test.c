@@ -1,20 +1,21 @@
-#include <linux/kernel.h> /* We're doing kernel work */
-#include <linux/module.h> /* Specifically, a module */
-#include <linux/proc_fs.h> /* Necessary because we use proc fs */
+#include <linux/kernel.h> 
+#include <linux/module.h> 
+#include <linux/proc_fs.h>  /* proc fs */
 #include <linux/seq_file.h> /* for seq_file */
 #include <linux/time.h>
 #include <linux/timer.h>
 #include <linux/sched.h>
 #include <linux/completion.h>
 
-#define PROC_NAME "iter"
+#define PROC_NAME "seq_file_test"
 #define dbg(fmt,args...) printk("[%s]:%d => "fmt,__FUNCTION__,__LINE__,##args)
 #define DBG() printk("[%s]:%d => \n",__FUNCTION__,__LINE__)
 const int data_size = 3;
 static char data[3] = {"string1", "string2", "string3"};
 const unsigned long delay = 3 * HZ;
 
-struct context{
+struct context
+{
     seq_file *seq;
     struct timer_list t;
     completion done;
@@ -32,8 +33,8 @@ static void timer_func(struct timer_list* t)
 static void init_timer(void)
 {
      g_context.t.expire = 5 * HZ;
-     timer_setup(&g_context.t, timer_func, 0);
      g_context.t.data = 0;
+     timer_setup(&g_context.t, timer_func, 0);
      g_context.seq = NULL;
      init_completion(&g_contex.done);
 }
@@ -59,6 +60,7 @@ static void *seq_start(struct seq_file *s, loff_t *pos)
 */ 
 static void *seq_next(struct seq_file *s, void *v, loff_t *pos) 
 { 
+    DBG();
     ++(*pos);
     return seq_start(s, pos);
 } 
@@ -77,7 +79,6 @@ static void seq_stop(struct seq_file *s, void *v)
 */ 
 static int seq_show(struct seq_file *s, void *v) 
 { 
-    //unsigned long n;
     DBG();
     int n = (int)v;
     seq_printf(s, "data[%d]:%s  \n", n, data[n]);
@@ -103,7 +104,8 @@ static int seq_show(struct seq_file *s, void *v)
 * This structure gather "function" to manage the sequence
 *
 */ 
-static struct seq_operations seq_ops = { 
+static struct seq_operations seq_ops = 
+{ 
     .start = seq_start,
     .next = seq_next,
     .stop = seq_stop,
@@ -122,7 +124,8 @@ static int open(struct inode *inode, struct file *file)
 * This structure gather "function" that manage the /proc file
 *
 */ 
-static struct file_operations file_ops = { 
+static struct file_operations file_ops = 
+{ 
     .owner = THIS_MODULE,
     .open = open,
     .read = seq_read,
