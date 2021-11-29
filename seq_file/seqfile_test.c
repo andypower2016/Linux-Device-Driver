@@ -5,6 +5,7 @@
 #include <linux/time.h>
 #include <linux/timer.h>
 ＃include <linux/sched.h>
+#include <linux/completion.h>
 
 #define PROC_NAME "iter"
 #define dbg(fmt,args...) printk("[%s]:%d => "fmt,__FUNCTION__,__LINE__,##args)
@@ -12,6 +13,30 @@
 const int data_size = 3;
 static char data[3] = {"string1", "string2", "string3"};
 const unsigned long delay = 3 * HZ;
+
+struct context{
+    seq_file *seq;
+    struct timer_list t;
+    completion done;
+} g_context;
+
+
+static void timer_func(struct timer_list* t)
+{
+    struct context *ctx = container_of(t, struct context, t);
+    unsigned long now = jiffies;
+    seq_printf(ctx->seq, "jiffies in timer_func = %ld\n", now);
+    complete(&ctx->done);
+}
+
+static void init_timer(void)
+{
+     g_context.t.expire = 5 * HZ;
+     timer_setup(&g_context.t, timer_func, 0);
+     g_context.t.data = 0;
+     g_context.seq = NULL;
+     init_completion(&g_contex.done);
+}
 /**
 * This function is called at the beginning of a sequence.
 * ie, when:
@@ -55,12 +80,24 @@ static int seq_show(struct seq_file *s, void *v)
     //unsigned long n;
     DBG();
     int n = (int)v;
+    seq_printf(s, "data[%d]:%s  \n", n, data[n]);
+    
+    
     unsigned long now = jiffies;
     seq_printf(s, "jiffies before delay = %ld\n", now);
     schedule_timeout(delay);
     now = jiffies;
     seq_printf(s, "jiffies after delay = %ld\n", now);
-    seq_printf(s, "data[%d]:%s  \n", n, data[n]);
+    
+    if(!g_contex.t.seq)
+    {
+        g_contex.t.seq = s;
+        add_timer(&g_contex.t);
+        if (wait_for_completion_interruptible(&g_contex.done)) 
+        {
+           seq_printf(s, "completion error! \n");
+        }
+    }
     return 0;
 } 
 /**
@@ -101,6 +138,8 @@ int init_module(void)
 { 
     struct proc_dir_entry *entry;
     entry = create_proc_entry(PROC_NAME, 0, NULL, &file_ops);
+    
+    init_timer();
     return 0;
 } 
 /**
