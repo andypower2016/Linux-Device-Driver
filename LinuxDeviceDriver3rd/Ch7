@@ -9,3 +9,93 @@
     rdtscl(low32);
     rdtscll(var64);
   
+3) Delay
+  1.Long delays
+  #include <linux/sched.h>
+  set_current_state(TASK_INTERRUPTIBLE);
+  schedule_timeout(delay);
+    
+  signed long __sched schedule_timeout(signed long timeout)
+  {
+        struct timer_list timer;
+        unsigned long expire;
+        switch (timeout)
+        {
+        case MAX_SCHEDULE_TIMEOUT:
+                schedule();
+                goto out;
+        default:
+                if (timeout < 0) 
+                {
+                        printk(KERN_ERR "schedule_timeout: wrong timeout "
+                                "value %lx\n", timeout);
+                        dump_stack();
+                        current->state = TASK_RUNNING;
+                        goto out;
+                }
+        }
+        expire = timeout + jiffies;
+        setup_timer_on_stack(&timer, process_timeout, (unsigned long)current);
+        __mod_timer(&timer, expire, false, TIMER_NOT_PINNED);
+        schedule();   // process switches to waiting queue
+        del_singleshot_timer_sync(&timer);
+        /* Remove the timer from the object tracker */
+        destroy_timer_on_stack(&timer);
+        timeout = expire - jiffies;
+    out:
+        return timeout < 0 ? 0 : timeout;
+  }
+   2.Short delays
+     #incluce <linux/delay.h>
+     
+     // busy waiting delays
+     void ndelay(unsigned long nsecs); 
+     void udelay(unsigned long usecs); 
+     void mdelay(unsigned long msecs);
+     
+     // non-busy waiting delays
+     void msleep(unsigned int millisecs);
+     unsigned long msleep_interruptible(unsigned int millisecs);
+     void ssleep(unsigned int seconds); // uninterruptible sleep
+     
+   3.Kernel timers
+   
+   #include <linux/timer.h> 
+   struct timer_list 
+   {
+        struct list_head entry;         /* entry in linked list of timers */
+        unsigned long expires;          /* expiration value, in jiffies */
+        void (*function)(unsigned long); /* the timer handler function */
+        unsigned long data;             /* lone argument to the handler */
+        struct tvec_t_base_s *base;     /* internal timer field, do not touch */
+   };
+   void init_timer(struct timer_list *timer);
+   struct timer_list TIMER_INITIALIZER(_function, _expires, _data);
+   void add_timer(struct timer_list * timer);
+   int del_timer(struct timer_list * timer);
+   
+
+wait_event_interruptible(wq, condition) /*等效沒有考慮返回值*/
+{
+     if (!(condition))
+     {
+         wait_queue_t _ _wait;
+         init_waitqueue_entry(&_ _wait, current);
+         add_wait_queue(&wq, &_ _wait);
+         for (;;)
+         {
+            set_current_state(TASK_INTERRUPTIBLE);
+            if (condition)
+            break;
+            schedule();  /* implicit call: del_from_runqueue(current)*/
+         }
+         current->state = TASK_RUNNING;
+         remove_wait_queue(&wq, &_ _wait);
+      }
+}
+The process is put to sleep (TASK_INTERRUPTIBLE) until the condition evaluates to true or a signal is received. The condition is checked each time the waitqueue wq is woken up.
+
+
+
+     
+   
