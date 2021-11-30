@@ -17,13 +17,13 @@ const unsigned long delay = (10 * HZ / MSEC_PER_SEC); // 10ms
 struct context
 {
     seq_file *seq;
-    struct timer_list t;
+    struct timer_list tlist;
     completion done;
 } g_context;
 
 static void timer_func(struct timer_list* t)
 {
-    struct context *ctx = container_of(t, struct context, t);
+    struct context *ctx = container_of(t, struct context, tlist);
     unsigned long now = jiffies;
     seq_printf(ctx->seq, "jiffies in timer_func = %ld\n", now);
     complete(&ctx->done);
@@ -89,11 +89,11 @@ static int seq_show(struct seq_file *s, void *v)
     {
         now = jiffies;
         seq_printf(s, "jiffies at timer init = %ld\n", now);
-        g_contex.t.expire = now + delay;  // delay 10ms from now
+        g_contex.tlist.expire = now + delay;  // delay 10ms from now
         g_contex.seq = s;
-        g_context.t.data = 0;
-        timer_setup(&g_context.t, timer_func, 0);
-        add_timer(&g_contex.t);
+        g_context.tlist.data = 0;
+        timer_setup(&g_context.tlist, timer_func, 0);
+        add_timer(&g_contex.tlist);
         if (wait_for_completion_interruptible(&g_contex.done))  // wait until timer expires
         {
            seq_printf(s, "completion error! \n");
