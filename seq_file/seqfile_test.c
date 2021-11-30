@@ -12,7 +12,7 @@
 #define DBG() printk("[%s]:%d => \n", __FUNCTION__, __LINE__)
 const int data_size = 3;
 static char data[3] = {"string1", "string2", "string3"};
-const unsigned long delay = 3 * HZ;
+const unsigned long delay = (10 * HZ / MSEC_PER_SEC); // 10ms
 
 struct context
 {
@@ -29,11 +29,8 @@ static void timer_func(struct timer_list* t)
     complete(&ctx->done);
 }
 
-static void init_timer(void)
+static void init_context(void)
 {
-     g_context.t.expire = 5 * HZ;
-     g_context.t.data = 0;
-     timer_setup(&g_context.t, timer_func, 0);
      g_context.seq = NULL;
      init_completion(&g_contex.done);
 }
@@ -82,17 +79,22 @@ static int seq_show(struct seq_file *s, void *v)
     int n = (int)v;
     seq_printf(s, "data[%d]:%s  \n", n, data[n]);
     
+    unsigned long now = jiffies;
+    seq_printf(s, "jiffies before delay = %ld\n", now);
+    schedule_timeout(delay);
+    now = jiffies;
+    seq_printf(s, "jiffies after delay = %ld\n", now);
+    
     if(!g_contex.seq)
     {
-        unsigned long now = jiffies;
-        seq_printf(s, "jiffies before delay = %ld\n", now);
-        schedule_timeout(delay);
         now = jiffies;
-        seq_printf(s, "jiffies after delay = %ld\n", now);
-        
+        seq_printf(s, "jiffies at timer init = %ld\n", now);
+        g_contex.t.expire = now + delay;
         g_contex.seq = s;
+        g_context.t.data = 0;
+        timer_setup(&g_context.t, timer_func, 0);
         add_timer(&g_contex.t);
-        if (wait_for_completion_interruptible(&g_contex.done)) 
+        if (wait_for_completion_interruptible(&g_contex.done))  // wait until timer expires
         {
            seq_printf(s, "completion error! \n");
         }
@@ -140,7 +142,7 @@ int init_module(void)
     struct proc_dir_entry *entry;
     entry = create_proc_entry(PROC_NAME, 0, NULL, &file_ops);
     
-    init_timer();
+    init_context();
     return 0;
 } 
 /**
