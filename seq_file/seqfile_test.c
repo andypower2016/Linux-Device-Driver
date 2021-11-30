@@ -89,7 +89,7 @@ static int seq_show(struct seq_file *s, void *v)
     {
         now = jiffies;
         seq_printf(s, "jiffies at timer init = %ld\n", now);
-        g_contex.t.expire = now + delay;
+        g_contex.t.expire = now + delay;  // delay 10ms from now
         g_contex.seq = s;
         g_context.t.data = 0;
         timer_setup(&g_context.t, timer_func, 0);
