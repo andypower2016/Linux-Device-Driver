@@ -8,8 +8,8 @@
 #include <linux/completion.h>
 
 #define PROC_NAME "seq_file_test"
-#define dbg(fmt,args...) printk("[%s]:%d => "fmt,__FUNCTION__,__LINE__,##args)
-#define DBG() printk("[%s]:%d => \n",__FUNCTION__,__LINE__)
+#define dbg(format, args...) printk("[%s]:%d => " format "\n" , __FUNCTION__, __LINE__, ##args)  // ex. dbg("msg %d %d",n1, n2)
+#define DBG() printk("[%s]:%d => \n", __FUNCTION__, __LINE__)
 const int data_size = 3;
 static char data[3] = {"string1", "string2", "string3"};
 const unsigned long delay = 3 * HZ;
@@ -20,7 +20,6 @@ struct context
     struct timer_list t;
     completion done;
 } g_context;
-
 
 static void timer_func(struct timer_list* t)
 {
@@ -152,6 +151,5 @@ void cleanup_module(void)
 { 
     remove_proc_entry(PROC_NAME, NULL);
 } 
- 
 MODULE_DESCRIPTION("seqfile_test");
 MODULE_LICENSE("GPL");
