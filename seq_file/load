@@ -1,0 +1,9 @@
+#!/bin/sh
+
+module="seqfile_test"
+device="seqfile_test"
+mode="777"
+
+
+sudo /sbin/insmod $module.ko $* || exit 1
+major=$(awk "\$2==\"$module\" {print \$1}" /proc/devices)

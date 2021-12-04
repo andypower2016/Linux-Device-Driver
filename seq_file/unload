@@ -1,0 +1,7 @@
+#!/bin/sh
+
+module="seqfile_test"
+device="seqfile_test"
+
+sudo rmmod $module
+sudo rm -f /dev/$device
