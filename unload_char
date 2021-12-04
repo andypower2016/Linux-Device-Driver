@@ -1,7 +1,0 @@
-#!/bin/sh
-
-module="char_device"
-device="char_device"
-
-sudo rmmod $module
-sudo rm -f /dev/$device
