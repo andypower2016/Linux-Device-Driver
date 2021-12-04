@@ -8,9 +8,11 @@ default:
 clean:
 	rm -rf *.o *.ko *.mod.c *.cmd *.markers *.order *.symvers *.tmp_versions *.mod $(BIN)
 
+.PHONY: load
 load:
-	sudo bash load_char
-	
+	sudo bash load
+
+.PHONY: unload	
 unload:
-	sudo bash unload_char
+	sudo bash unload
 	
