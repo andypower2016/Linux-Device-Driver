@@ -1,0 +1,7 @@
+#!/bin/sh
+
+module="jiffie"
+device="jiffie"
+
+sudo rmmod $module
+sudo rm -f /dev/$device
