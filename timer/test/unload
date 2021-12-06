@@ -1,0 +1,7 @@
+#!/bin/sh
+
+module="test_timer"
+device="test_timer"
+
+sudo rmmod $module
+#sudo rm -f /dev/$device
