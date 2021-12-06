@@ -7,8 +7,7 @@
 #include <linux/sched.h>
 #include <linux/completion.h>
 #include <linux/version.h>
-#include <linux/uaccess.h>
-#include <linux/slab.h> 
+#include <linux/slab.h>   // kmalloc
 
 #define PROC_NAME "seqfile_test"
 #define dbg(format, args...) printk("[%s]:%d => " format "\n" , __FUNCTION__, __LINE__, ##args)  // ex. dbg("msg %d %d",n1, n2)
@@ -16,28 +15,8 @@
 
 const int data_size = 3;
 const char* data[] = {"string1", "string2", "string3"};
-const unsigned long delay = (10 * HZ / MSEC_PER_SEC); // 10ms
+int ret;
 
-struct context
-{
-    struct seq_file *seq;
-    struct timer_list tlist;
-    struct completion done;
-} g_context;
-
-static void timer_func(struct timer_list* t)
-{
-    struct context *ctx = container_of(t, struct context, tlist);
-    unsigned long now = jiffies;
-    seq_printf(ctx->seq, "jiffies in timer_func = %ld\n", now);
-    complete(&ctx->done);
-}
-
-static void init_context(void)
-{
-     g_context.seq = NULL;
-     init_completion(&g_context.done);
-}
 /**
 * This function is called at the beginning of a sequence.
 * ie, when:
@@ -95,34 +74,7 @@ static int seq_show(struct seq_file *s, void *v)
     loff_t *spos = v;
     long long n = (long long) *spos;
     dbg("n=%lld", n);
-    seq_printf(s, "data[%lld]:%s  \n", n, data[n]);
-    
-    unsigned long now = jiffies;
-    seq_printf(s, "jiffies before delay = %ld\n", now);
-    set_current_state(TASK_INTERRUPTIBLE);
-    schedule_timeout(HZ*3);
-    now = jiffies;
-    seq_printf(s, "jiffies after delay = %ld\n", now);
-    
-    if(!g_context.seq)
-    {
-        now = jiffies;
-        seq_printf(s, "jiffies at timer init = %ld\n", now);
-        g_context.tlist.expires = now + delay;  // delay 10ms from now
-        g_context.seq = s;
-        //g_context.tlist.data = 0;
-        timer_setup(&g_context.tlist, timer_func, 0);
-        add_timer(&g_context.tlist);
-        if (wait_for_completion_interruptible(&g_context.done))  // wait until timer expires
-        {
-           seq_printf(s, "completion error! \n");
-        }
-        else
-        {
-           now = jiffies;
-           seq_printf(s, "completion success! , jiffies=%ld\n", now);
-        }
-    }
+    seq_printf(s, "data[%lld]:%s \n", n, data[n]);
     return 0;
 } 
 /**
@@ -151,7 +103,7 @@ static int open(struct inode *inode, struct file *file)
 *
 */ 
 // detect linux version, use proc_ops instead of file_operations in later linux versions
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,6,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,6,0) // for linux ver above 5.6.0
 static struct proc_ops fops = { 
     .proc_open = open,
     .proc_read = seq_read,
@@ -175,10 +127,13 @@ static struct file_operations fops = {
 */ 
 int init_seq(void) 
 { 
+    ret = 0;
     struct proc_dir_entry *entry;
     entry = proc_create(PROC_NAME, 0, NULL, &fops);
-    init_context();
-    return 0;
+    if(!entry)
+        ret = -EFAULT;
+    
+    return ret;
 } 
 /**
 * This function is called when the module is unloaded.
