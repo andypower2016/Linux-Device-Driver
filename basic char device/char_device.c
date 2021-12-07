@@ -10,10 +10,14 @@
 #include <linux/completion.h> // completion 
 #include <linux/spinlock.h>   // spinlock
 
+#include <linux/ioctl.h>
+#include "ioctrl_test.h"
+
 #include "char_device.h"
 
-int ret;
+#define DBG(format, arg...) printk("[%s]:%d => " format "\n",__FUNCTION__,__LINE__,##arg)
 
+int ret;
 // completion not used here
 //struct completion rw_completion; // device read will wait until the completion of device write
 //DECLARE_COMPLETION(completion);	
@@ -29,7 +33,8 @@ struct file_operations fileop =
     .write = write,
     .release = release,
     .llseek = seek,
-};
+    .unlocked_ioctl = ioctl_test,
+ };
 
 void free_device_data(struct char_device *dev)
 {
@@ -45,6 +50,8 @@ void free_device_data(struct char_device *dev)
 		}
 		kfree(dev->data);
 	}
+	if(dev->ioctrl_data)
+		kfree(dev->ioctrl_data);
 }
 
 static void cleanup_device(void)
@@ -71,6 +78,13 @@ static int setup_device(void)
 	}
 	memset(fake_device, 0, sizeof(struct char_device));	
 
+
+	// kmalloc ctrl data
+	fake_device->ioctrl_data = (char*) kmalloc(sizeof(char)*256, GFP_KERNEL);
+	memset(fake_device->ioctrl_data, 0, sizeof(char)*256);
+	char init_data[] = "ctl init data";
+	memcpy(fake_device->ioctrl_data, init_data, strlen(init_data));
+
 	// init semaphore
 	sema_init(&fake_device->sem, 1); // initial value one, means nothing is locked
 	
@@ -80,61 +94,29 @@ static int setup_device(void)
 	ret = cdev_add(&fake_device->mcdev, dev_num, 1);
 	if(ret < 0)
 	{
-	   printk(KERN_ALERT "Fail to add cdev to kernel\n");
+	   DBG("Fail to add cdev to kernel");
 	}
 	return ret;
 }
-
-static __init int chrdev_init(void)
-{
-	// (1) use dynamic allocation to assign our device
-	ret = alloc_chrdev_region(&dev_num, 0, 1, DEVICE_NAME);
-	if(ret < 0)
-	{
-	   printk(KERN_ALERT "Fail to allocate major number\n");
-	   return ret;
-	}
-	major_num = MAJOR(dev_num); // extracts the major number and store in variable
-	printk(KERN_INFO "Major number=%d\n", major_num);
-	printk(KERN_INFO "Use mknod /dev/%s c %d 0\" for device file\n", DEVICE_NAME, major_num);
-
-	// setup device dynamically
-	ret = setup_device();
-
-	// init spinlock
-	spin_lock_init(&g_spin_lock);
-	return ret;
-}
-
-static __exit void chrdev_exit(void)
-{
-	cleanup_device();
-	printk(KERN_ALERT "%s Unload Device Complete\n", __FUNCTION__);
-}
-
 
 // Called when device is called by kernel
 int open(struct inode *pinode, struct file *pfile)
 { 
+	if(down_interruptible(&fake_device->sem)) 
+	{
+	    return -ERESTARTSYS;
+	}
 	struct char_device *dev = container_of(pinode->i_cdev, struct char_device, mcdev);
 	pfile->private_data = dev;
-	printk(KERN_INFO "%s opened device ! device datasize=%d\n", __FUNCTION__, dev->size);
-	return ret;
+	DBG("opened device ! device datasize=%d\n", dev->size);
+	return 0;
 }
 
 // Called when user wants to get information from the device
 ssize_t read(struct file *pfile, char __user *buffer, size_t length, loff_t *f_pos)
 {
-	/*if(down_interruptible(&fake_device->sem)) 
-	{
-	    return -ERESTARTSYS;
-	}*/
-	//spin_lock(&g_spin_lock);
-	spin_lock_irqsave(&g_spin_lock, flags); // disable interrupts before taking the lock
-
 	struct char_device *dev = pfile->private_data;
-	printk(KERN_INFO "%s Reading from device\n", __FUNCTION__);
-	printk(KERN_INFO "%s fpos=%lld, offset=%lld\n", __FUNCTION__, pfile->f_pos, *f_pos);
+	DBG("fpos=%lld, offset=%lld\n", pfile->f_pos, *f_pos);
 	
 	int idx_chunk = *f_pos/(DATA_NUM*DATA_SIZE);
 	int idx_data  = *f_pos%DATA_SIZE;
@@ -168,25 +150,14 @@ ssize_t read(struct file *pfile, char __user *buffer, size_t length, loff_t *f_p
 	// update file offset 
 	*f_pos += length;
 end:
-	//up(&fake_device->sem);
-	//spin_unlock(&g_spin_lock);
-	spin_unlock_irqrestore(&g_spin_lock, flags);
 	return ret;
 }
 
 // Called when user wants to send data to device
 ssize_t write(struct file *pfile, const char __user *buffer, size_t length, loff_t *f_pos)
 {
-	/*if(down_interruptible(&fake_device->sem)) 
-	{
-	    return -ERESTARTSYS;
-	}*/
-	//spin_lock(&g_spin_lock);
-	spin_lock_irqsave(&g_spin_lock, flags);
-
 	struct char_device *dev = pfile->private_data;
-	printk(KERN_INFO "%s Writing to device\n", __FUNCTION__);
-	printk(KERN_INFO "%s fpos=%lld, offset=%lld\n", __FUNCTION__, pfile->f_pos, *f_pos);
+	DBG("fpos=%lld, offset=%lld\n", pfile->f_pos, *f_pos);
 	
 	int idx_chunk = *f_pos/(DATA_NUM*DATA_SIZE);
 	int idx_data  = *f_pos%DATA_SIZE;
@@ -222,25 +193,23 @@ ssize_t write(struct file *pfile, const char __user *buffer, size_t length, loff
 	{
 	   dev->size = *f_pos;
 	}	
-	printk("write length=%ld, dev->size=%d\n", length, dev->size);
+	DBG("write length=%ld, dev->size=%d", length, dev->size);
 end:
-	//up(&fake_device->sem);
-	//spin_unlock(&g_spin_lock);
-	spin_unlock_irqrestore(&g_spin_lock, flags);
 	return ret;
 }
 
 
 int release(struct inode *pinode, struct file *pfile)
 {
-	printk(KERN_INFO "%s Closed device\n", __FUNCTION__);
+	DBG("Closed device");
+	up(&fake_device->sem);
 	return 0;
 }
 
 
 loff_t seek(struct file* pfile, loff_t offset, int option)
 {
-	printk(KERN_INFO "%s fpos=%lld, offset=%lld\n", __FUNCTION__, pfile->f_pos, offset);
+	DBG("fpos=%lld, offset=%lld", pfile->f_pos, offset);
 	struct char_device *dev = pfile->private_data;
 	loff_t newpos;
 	switch(option)
@@ -262,15 +231,60 @@ loff_t seek(struct file* pfile, loff_t offset, int option)
 	    return -EINVAL;
 	}
 	pfile->f_pos = newpos;
-	printk(KERN_INFO "%s new file pos=%lld\n", __FUNCTION__, newpos);
+	DBG("new file pos=%lld", newpos);
 	return newpos;
 }
 
-/*
-int ioctl(struct inode* pinode, struct file* pfile, unsigned int f_flags, unsigned long )
+long int ioctl_test(struct file *file, unsigned cmd, unsigned long arg)
 {
-	
-}*/
+	switch(cmd)
+	{
+		case WR_VALUE:
+			memset(fake_device->ioctrl_data, 0, strlen(fake_device->ioctrl_data));
+			if(copy_from_user(fake_device->ioctrl_data, (char *) arg, strlen((char *)arg))) 
+			{
+				DBG("Error copying data from user!");
+			}
+			else
+			{
+				DBG("Update the data to : %s", fake_device->ioctrl_data);
+			}
+			break;
+		case RD_VALUE:
+			if(copy_to_user((char *) arg, fake_device->ioctrl_data, strlen(fake_device->ioctrl_data))) 
+				DBG("Error copying data to user!");
+			else
+				DBG("The data was copied!");
+			break;
+		default:
+			break;
+	}
+	return 0;
+}
+
+static __init int chrdev_init(void)
+{
+	// (1) use dynamic allocation to assign our device
+	ret = alloc_chrdev_region(&dev_num, 0, 1, DEVICE_NAME);
+	if(ret < 0)
+	{
+	   DBG("Fail to allocate major number");
+	   return ret;
+	}
+	major_num = MAJOR(dev_num); // extracts the major number and store in variable
+	DBG("Major number=%d", major_num);
+	DBG("Use mknod /dev/%s c %d 0\" for device file", DEVICE_NAME, major_num);
+
+	// setup device dynamically
+	ret = setup_device();
+	return ret;
+}
+
+static __exit void chrdev_exit(void)
+{
+	cleanup_device();
+	DBG("Unload Device Complete");
+}
 
 module_init(chrdev_init);
 module_exit(chrdev_exit);

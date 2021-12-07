@@ -13,6 +13,8 @@ struct char_device
     int size;		   // ammount of data
     struct semaphore sem; // semaphore, for locking the device
     struct cdev mcdev;    // cdev
+
+    char* ioctrl_data;
 };
 struct char_device *fake_device = NULL;
 
@@ -28,5 +30,6 @@ ssize_t read(struct file *, char __user *, size_t, loff_t *);
 ssize_t write(struct file *, const char __user *, size_t, loff_t *);
 int release(struct inode *, struct file *);
 loff_t seek(struct file *, loff_t, int);
+long int ioctl_test(struct file *file, unsigned cmd, unsigned long arg);
 
 #endif
