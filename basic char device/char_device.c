@@ -237,21 +237,22 @@ loff_t seek(struct file* pfile, loff_t offset, int option)
 
 long int ioctl_test(struct file *file, unsigned cmd, unsigned long arg)
 {
+	struct char_device *dev = file->private_data;
 	switch(cmd)
 	{
 		case WR_VALUE:
-			memset(fake_device->ioctrl_data, 0, strlen(fake_device->ioctrl_data));
+			memset(dev->ioctrl_data, 0, strlen(dev->ioctrl_data));
 			if(copy_from_user(fake_device->ioctrl_data, (char *) arg, strlen((char *)arg))) 
 			{
 				DBG("Error copying data from user!");
 			}
 			else
 			{
-				DBG("Update the data to : %s", fake_device->ioctrl_data);
+				DBG("Update the data to : %s", dev->ioctrl_data);
 			}
 			break;
 		case RD_VALUE:
-			if(copy_to_user((char *) arg, fake_device->ioctrl_data, strlen(fake_device->ioctrl_data))) 
+			if(copy_to_user((char *) arg, dev->ioctrl_data, strlen(dev->ioctrl_data))) 
 				DBG("Error copying data to user!");
 			else
 				DBG("The data was copied!");
