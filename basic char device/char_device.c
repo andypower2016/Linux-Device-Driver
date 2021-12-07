@@ -10,6 +10,8 @@
 #include <linux/completion.h> // completion 
 #include <linux/spinlock.h>   // spinlock
 
+#include <linux/wait.h> // wait_queue
+
 #include <linux/ioctl.h>
 #include "ioctrl_test.h"
 
@@ -24,6 +26,11 @@ int ret;
 
 spinlock_t g_spin_lock;
 unsigned long flags;
+
+
+wait_queue_head_t wq;
+static int wait_flag = 0;
+
 
 struct file_operations fileop = 
 {
@@ -68,6 +75,7 @@ static void cleanup_device(void)
 static int setup_device(void)
 {
     ret = 0; // 0 for success
+	
 	fake_device = kmalloc(sizeof(struct char_device), GFP_KERNEL);
 	if(!fake_device)
 	{
@@ -88,6 +96,9 @@ static int setup_device(void)
 	// init semaphore
 	sema_init(&fake_device->sem, 1); // initial value one, means nothing is locked
 	
+	// init wait queue
+	init_waitqueue_head(&wq);
+
 	// init cdev
 	cdev_init(&fake_device->mcdev, &fileop);
 	fake_device->mcdev.owner = THIS_MODULE;
@@ -102,13 +113,19 @@ static int setup_device(void)
 // Called when device is called by kernel
 int open(struct inode *pinode, struct file *pfile)
 { 
-	if(down_interruptible(&fake_device->sem)) 
+	/*if(down_interruptible(&fake_device->sem)) 
 	{
 	    return -ERESTARTSYS;
-	}
+	}*/
 	struct char_device *dev = container_of(pinode->i_cdev, struct char_device, mcdev);
 	pfile->private_data = dev;
 	DBG("opened device ! device datasize=%d\n", dev->size);
+	return 0;
+}
+int release(struct inode *pinode, struct file *pfile)
+{
+	DBG("Closed device");
+	//up(&fake_device->sem);
 	return 0;
 }
 
@@ -198,15 +215,6 @@ end:
 	return ret;
 }
 
-
-int release(struct inode *pinode, struct file *pfile)
-{
-	DBG("Closed device");
-	up(&fake_device->sem);
-	return 0;
-}
-
-
 loff_t seek(struct file* pfile, loff_t offset, int option)
 {
 	DBG("fpos=%lld, offset=%lld", pfile->f_pos, offset);
@@ -241,8 +249,12 @@ long int ioctl_test(struct file *file, unsigned cmd, unsigned long arg)
 	switch(cmd)
 	{
 		case WR_VALUE:
+			// wakes up all the process in the waitqueue (wq)
+			wait_flag = 1;
+			wake_up_interruptible(&wq);
+
 			memset(dev->ioctrl_data, 0, strlen(dev->ioctrl_data));
-			if(copy_from_user(fake_device->ioctrl_data, (char *) arg, strlen((char *)arg))) 
+			if(copy_from_user(dev->ioctrl_data, (char *) arg, strlen((char *)arg))) 
 			{
 				DBG("Error copying data from user!");
 			}
@@ -251,11 +263,15 @@ long int ioctl_test(struct file *file, unsigned cmd, unsigned long arg)
 				DBG("Update the data to : %s", dev->ioctrl_data);
 			}
 			break;
-		case RD_VALUE:
+		case RD_VALUE:		
 			if(copy_to_user((char *) arg, dev->ioctrl_data, strlen(dev->ioctrl_data))) 
 				DBG("Error copying data to user!");
 			else
 				DBG("The data was copied!");
+
+			// puts the current reading process to waitqueue, until wake up is called and condition satisfied
+			wait_event_interruptible(wq, wait_flag != 0);
+			wait_flag = 0;
 			break;
 		default:
 			break;
