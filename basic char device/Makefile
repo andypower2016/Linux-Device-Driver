@@ -1,6 +1,7 @@
 KERNELBUILD := /lib/modules/$(shell uname -r)/build
 
-obj-m := char_device.o
+char_device_pipe-objs := char_device.o char_pipe.o
+obj-m := char_device_pipe.o
 
 default:
 	make -C $(KERNELBUILD) M=$(PWD) modules

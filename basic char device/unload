@@ -1,7 +1,9 @@
 #!/bin/sh
 
-module="char_device"
-device="char_device"
+module="char_device_pipe"
+major_device="char_device"
+child_device="char_pipe"
 
 sudo rmmod $module
-sudo rm -f /dev/$device
+sudo rm -f /dev/$major_device
+sudo rm -f /dev/$child_device

@@ -9,15 +9,18 @@
 #include <linux/seq_file.h>   // seq_printf
 #include <linux/completion.h> // completion 
 #include <linux/spinlock.h>   // spinlock
-
-#include <linux/wait.h> // wait_queue
-
+#include <linux/wait.h> 	  // wait_queue
 #include <linux/ioctl.h>
-#include "ioctrl_test.h"
 
+#include "ioctrl_test.h"
 #include "char_device.h"
 
-#define DBG(format, arg...) printk("[%s]:%d => " format "\n",__FUNCTION__,__LINE__,##arg)
+struct char_device *fake_device = NULL;
+// device registraion datas
+int minior_num = 0;
+int major_num; // will store our major number, extracted from dev_t using macro - mknod /dev/device_file c major minor  
+dev_t dev_num; // device number
+int dev_count = 1;
 
 int ret;
 // completion not used here
@@ -27,10 +30,8 @@ int ret;
 spinlock_t g_spin_lock;
 unsigned long flags;
 
-
 wait_queue_head_t wq;
 static int wait_flag = 0;
-
 
 struct file_operations fileop = 
 {
@@ -86,10 +87,9 @@ static int setup_device(void)
 	}
 	memset(fake_device, 0, sizeof(struct char_device));	
 
-
 	// kmalloc ctrl data
-	fake_device->ioctrl_data = (char*) kmalloc(sizeof(char)*256, GFP_KERNEL);
-	memset(fake_device->ioctrl_data, 0, sizeof(char)*256);
+	fake_device->ioctrl_data = (char*) kmalloc(buffer_size, GFP_KERNEL);
+	memset(fake_device->ioctrl_data, 0, buffer_size);
 	char init_data[] = "ctl init data";
 	memcpy(fake_device->ioctrl_data, init_data, strlen(init_data));
 
@@ -113,19 +113,20 @@ static int setup_device(void)
 // Called when device is called by kernel
 int open(struct inode *pinode, struct file *pfile)
 { 
-	/*if(down_interruptible(&fake_device->sem)) 
+	/*if(down_interruptible(&fake_device->sem)) */
+	if(down_trylock(&fake_device->sem)) 
 	{
-	    return -ERESTARTSYS;
-	}*/
+	    DBG("Device is currently in use");
+	}
 	struct char_device *dev = container_of(pinode->i_cdev, struct char_device, mcdev);
 	pfile->private_data = dev;
-	DBG("opened device ! device datasize=%d\n", dev->size);
+	DBG("Opened device ! device datasize=%d\n", dev->size);
 	return 0;
 }
 int release(struct inode *pinode, struct file *pfile)
 {
 	DBG("Closed device");
-	//up(&fake_device->sem);
+	up(&fake_device->sem);
 	return 0;
 }
 
@@ -252,7 +253,7 @@ long int ioctl_test(struct file *file, unsigned cmd, unsigned long arg)
 			// wakes up all the process in the waitqueue (wq)
 			wait_flag = 1;
 			wake_up_interruptible(&wq);
-
+ 
 			memset(dev->ioctrl_data, 0, strlen(dev->ioctrl_data));
 			if(copy_from_user(dev->ioctrl_data, (char *) arg, strlen((char *)arg))) 
 			{
@@ -269,9 +270,14 @@ long int ioctl_test(struct file *file, unsigned cmd, unsigned long arg)
 			else
 				DBG("The data was copied!");
 
-			// puts the current reading process to waitqueue, until wake up is called and condition satisfied
-			wait_event_interruptible(wq, wait_flag != 0);
-			wait_flag = 0;
+			// Puts the current reading process to waitqueue, until wake up is called and condition satisfied
+			// function returns -ERESTARTSYS if it was interrupted by a signal, 0 when condition is true.
+			if(wait_event_interruptible(wq, wait_flag != 0))
+			{
+				DBG("interrupt signal occurs");
+				return -ERESTARTSYS;
+			}
+			wait_flag = 0; // reset flag to 0
 			break;
 		default:
 			break;
@@ -282,24 +288,36 @@ long int ioctl_test(struct file *file, unsigned cmd, unsigned long arg)
 static __init int chrdev_init(void)
 {
 	// (1) use dynamic allocation to assign our device
-	ret = alloc_chrdev_region(&dev_num, 0, 1, DEVICE_NAME);
+	ret = alloc_chrdev_region(&dev_num, minior_num, dev_count, DEVICE_NAME);
 	if(ret < 0)
 	{
 	   DBG("Fail to allocate major number");
 	   return ret;
 	}
 	major_num = MAJOR(dev_num); // extracts the major number and store in variable
+	DBG("Load Device");
 	DBG("Major number=%d", major_num);
 	DBG("Use mknod /dev/%s c %d 0\" for device file", DEVICE_NAME, major_num);
 
 	// setup device dynamically
 	ret = setup_device();
-	return ret;
+	if(ret < 0)
+		return ret;
+
+
+	// init char pipe
+	dev_t dev = MKDEV(major_num, minior_num+1); // makes a device number(major, minior+1)
+	ret = char_p_init(dev);
+	if(ret < 0)
+		return ret;
+
+	return 0;
 }
 
 static __exit void chrdev_exit(void)
 {
 	cleanup_device();
+	char_p_cleanup();
 	DBG("Unload Device Complete");
 }
 
