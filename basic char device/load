@@ -6,8 +6,8 @@ child_device="char_pipe"
 mode="777"
 
 sudo /sbin/insmod $module.ko $* || exit 1
-major=$(awk "\$2==\"$major_device\" {print \$1}" /proc/device
-	
+major=$(awk "\$2==\"$major_device\" {print \$1}" /proc/devices)
+
 sudo rm -f /dev/$major_device
 sudo rm -f /dev/$child_device
 sudo mknod -m $mode /dev/$major_device c $major 0
