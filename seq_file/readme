@@ -1,0 +1,2 @@
+An demonstration of basic seq_file operations, create proc files (virtual files).
+Often used for debugging drivers, proc privides and interface between user space and kernel space.
