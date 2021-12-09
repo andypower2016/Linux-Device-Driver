@@ -29,23 +29,201 @@ struct char_pipe
 } *char_p_device ;
 
 #define CHAR_PIPE "char_pipe"
-static int char_p_dev_num;
+static int char_p_dev_num; // device number
 static int char_p_major_num;
-static int char_p_minor_num = 1;
-static int char_p_devno;
-static int char_p_nr_devs = 1;
+static int char_p_minor_num = 1;	
+static int char_p_nr_devs = 1;	// number of devices
+static int char_p_buffer = 4000;
+
+
+static int char_p_fasync(int fd, struct file *filp, int mode)
+{
+	struct char_pipe *dev = filp->private_data;
+
+	return fasync_helper(fd, filp, mode, &dev->async_queue);
+}
+
+static int char_p_open(struct inode *inode, struct file *filp)
+{
+	struct char_pipe *dev;
+
+	dev = container_of(inode->i_cdev, struct char_pipe, cdev);
+	filp->private_data = dev;
+
+	if (mutex_lock_interruptible(&dev->lock))
+		return -ERESTARTSYS;
+	if (!dev->buffer) {
+		/* allocate the buffer */
+		dev->buffer = kmalloc(char_p_buffer, GFP_KERNEL);
+		if (!dev->buffer) {
+			mutex_unlock(&dev->lock);
+			return -ENOMEM;
+		}
+	}
+	dev->buffersize = char_p_buffer;
+	dev->end = dev->buffer + dev->buffersize;
+	dev->rp = dev->wp = dev->buffer; /* rd and wr from the beginning */
+
+	/* use f_mode,not  f_flags: it's cleaner (fs/open.c tells why) */
+	if (filp->f_mode & FMODE_READ)
+		dev->nreaders++;
+	if (filp->f_mode & FMODE_WRITE)
+		dev->nwriters++;
+	mutex_unlock(&dev->lock);
+
+	return nonseekable_open(inode, filp);
+}
+static int char_p_release(struct inode *inode, struct file *filp)
+{
+	struct char_pipe *dev = filp->private_data;
+
+	/* remove this filp from the asynchronously notified filp's */
+	char_p_fasync(-1, filp, 0);
+	mutex_lock(&dev->lock);
+	if (filp->f_mode & FMODE_READ)
+		dev->nreaders--;
+	if (filp->f_mode & FMODE_WRITE)
+		dev->nwriters--;
+	if (dev->nreaders + dev->nwriters == 0) {
+		kfree(dev->buffer);
+		dev->buffer = NULL; /* the other fields are not checked on open */
+	}
+	mutex_unlock(&dev->lock);
+	return 0;
+}
+
+/*
+ * Data management: read and write
+ */
+
+static ssize_t char_p_read(struct file *filp, char __user *buf, size_t count,
+                loff_t *f_pos)
+{
+	struct char_pipe *dev = filp->private_data;
+
+	if (mutex_lock_interruptible(&dev->lock))
+		return -ERESTARTSYS;
+
+	while (dev->rp == dev->wp) /* nothing to read */
+	{ 
+		mutex_unlock(&dev->lock); /* release the lock */
+		if (filp->f_flags & O_NONBLOCK)
+			return -EAGAIN;
+		DBG("\"%s\" reading: going to sleep\n", current->comm);
+		if (wait_event_interruptible(dev->inq, (dev->rp != dev->wp)))
+			return -ERESTARTSYS; /* signal: tell the fs layer to handle it */
+		/* otherwise loop, but first reacquire the lock */
+		if (mutex_lock_interruptible(&dev->lock))
+			return -ERESTARTSYS;
+	}
+	/* ok, data is there, return something */
+	if (dev->wp > dev->rp)
+		count = min(count, (size_t)(dev->wp - dev->rp));
+	else /* the write pointer has wrapped, return data up to dev->end */
+		count = min(count, (size_t)(dev->end - dev->rp));
+	if (copy_to_user(buf, dev->rp, count)) 
+	{
+		mutex_unlock (&dev->lock);
+		return -EFAULT;
+	}
+	dev->rp += count;
+	if (dev->rp == dev->end)
+		dev->rp = dev->buffer; /* wrapped */
+	mutex_unlock (&dev->lock);
+
+	/* finally, awake any writers and return */
+	wake_up_interruptible(&dev->outq);
+	DBG("\"%s\" did read %li bytes\n",current->comm, (long)count);
+	return count;
+}
+
+
+/* How much space is free? */
+static int spacefree(struct char_pipe *dev)
+{
+	if (dev->rp == dev->wp)
+		return dev->buffersize - 1;
+	return ((dev->rp + dev->buffersize - dev->wp) % dev->buffersize) - 1;
+}
+
+/* Wait for space for writing; caller must hold device semaphore.  On
+ * error the semaphore will be released before returning. */
+static int char_getwritespace(struct char_pipe *dev, struct file *filp)
+{
+	while (spacefree(dev) == 0) /* full */
+	{ 
+		DEFINE_WAIT(wait);
+		
+		mutex_unlock(&dev->lock);
+		if (filp->f_flags & O_NONBLOCK)
+			return -EAGAIN;
+		DBG("\"%s\" writing: going to sleep\n",current->comm);
+		prepare_to_wait(&dev->outq, &wait, TASK_INTERRUPTIBLE);
+		if (spacefree(dev) == 0)
+			schedule();
+		finish_wait(&dev->outq, &wait);
+		if (signal_pending(current))
+			return -ERESTARTSYS; /* signal: tell the fs layer to handle it */
+		if (mutex_lock_interruptible(&dev->lock))
+			return -ERESTARTSYS;
+	}
+	return 0;
+}	
+
+
+static ssize_t char_p_write(struct file *filp, const char __user *buf, size_t count,
+                loff_t *f_pos)
+{
+	struct char_pipe *dev = filp->private_data;
+	int result;
+
+	if (mutex_lock_interruptible(&dev->lock))
+		return -ERESTARTSYS;
+
+	/* Make sure there's space to write */
+	result = char_getwritespace(dev, filp);
+	if (result)
+		return result; /* scull_getwritespace called up(&dev->sem) */
+
+	/* ok, space is there, accept something */
+	count = min(count, (size_t)spacefree(dev));
+	if (dev->wp >= dev->rp)
+		count = min(count, (size_t)(dev->end - dev->wp)); /* to end-of-buf */
+	else /* the write pointer has wrapped, fill up to rp-1 */
+		count = min(count, (size_t)(dev->rp - dev->wp - 1));
+	DBG("Going to accept %li bytes to %p from %p\n", (long)count, dev->wp, buf);
+	if (copy_from_user(dev->wp, buf, count)) {
+		mutex_unlock(&dev->lock);
+		return -EFAULT;
+	}
+	dev->wp += count;
+	if (dev->wp == dev->end)
+		dev->wp = dev->buffer; /* wrapped */
+	mutex_unlock(&dev->lock);
+
+	/* finally, awake any reader */
+	wake_up_interruptible(&dev->inq);  /* blocked in read() and select() */
+
+	/* and signal asynchronous readers, explained late in chapter 5 */
+	if (dev->async_queue)
+		kill_fasync(&dev->async_queue, SIGIO, POLL_IN);
+	DBG("\"%s\" did write %li bytes\n",current->comm, (long)count);
+	return count;
+}
 
 struct file_operations char_pipe_fops = 
 {
 	.owner =	THIS_MODULE,
+	.read =		char_p_read,
+	.write =	char_p_write,
+	.open =		char_p_open,
+	.release =	char_p_release,
+	.unlocked_ioctl = ioctl_test,
+	.fasync =	char_p_fasync,
 	/*.llseek =	no_llseek,
-	.read =		scull_p_read,
-	.write =	scull_p_write,
 	.poll =		scull_p_poll,
 	.unlocked_ioctl = scull_ioctl,
-	.open =		scull_p_open,
-	.release =	scull_p_release,
-	.fasync =	scull_p_fasync,*/
+	*/
 };
 
 /*
@@ -53,14 +231,14 @@ struct file_operations char_pipe_fops =
  */
 static void char_p_setup_cdev(struct char_pipe *dev, int index)
 {
-	int err, devno = char_p_devno + index;
+	int err, devno = char_p_dev_num + index;
     
 	cdev_init(&dev->cdev, &char_pipe_fops);
 	dev->cdev.owner = THIS_MODULE;
-	err = cdev_add (&dev->cdev, devno, 1);
+	err = cdev_add(&dev->cdev, devno, 1);
 	/* Fail gracefully if need be */
 	if (err)
-		printk(KERN_NOTICE "Error %d adding scullpipe%d", err, index);
+	  printk(KERN_NOTICE "Error %d adding scullpipe%d", err, index);
 }
 
  
@@ -70,19 +248,18 @@ static void char_p_setup_cdev(struct char_pipe *dev, int index)
  */
 int char_p_init(dev_t dev)
 {
-	int i, result;
+	int i = 0, result = 0;
 
 	result = register_chrdev_region(dev, char_p_nr_devs, CHAR_PIPE);
 	if (result < 0) 
 	{
 		DBG("Unable to get char pipe region, error %d", result);
-		return 0;
+		return result;
 	}
-	//char_p_major_num = MAJOR(char_p_dev_num);
-	DBG("Load Char Pipe Device");
-	//DBG("Major number=%d", char_p_major_num);
-	//DBG("Use mknod /dev/%s c %d 0\" for device file", CHAR_PIPE, char_p_major_num);
 	char_p_dev_num = dev;
+	DBG("Load Char pipe device success");
+	DBG("Major number=%d", MAJOR(dev));
+	
 	char_p_device = kmalloc(char_p_nr_devs * sizeof(struct char_pipe), GFP_KERNEL);
 	if (char_p_device == NULL) 
 	{
@@ -90,14 +267,14 @@ int char_p_init(dev_t dev)
 		return 0;
 	}
 	memset(char_p_device, 0, char_p_nr_devs * sizeof(struct char_pipe));
-	//for (i = 0; i < scull_p_nr_devs; i++) 
+	//for (i = 0; i < char_p_nr_devs; i++) 
 	//{
 		init_waitqueue_head(&(char_p_device->inq));
 		init_waitqueue_head(&(char_p_device->outq));
 		mutex_init(&char_p_device->lock);
-		char_p_setup_cdev(char_p_device, 0);
+		char_p_setup_cdev(char_p_device, i);
 	//}
-	return char_p_nr_devs;
+	return result;
 }
 
 /*

@@ -17,10 +17,10 @@
 
 struct char_device *fake_device = NULL;
 // device registraion datas
-int minior_num = 0;
-int major_num; // will store our major number, extracted from dev_t using macro - mknod /dev/device_file c major minor  
-dev_t dev_num; // device number
-int dev_count = 1;
+int minior_num = 0; // minor number of the device, we set to zero here
+int major_num; 		// will store our major number, extracted from dev_t using MAJOR macro
+dev_t dev_num; 		// device number
+int dev_count = 1;  // number of devices
 
 int ret;
 // completion not used here
@@ -44,7 +44,7 @@ struct file_operations fileop =
     .unlocked_ioctl = ioctl_test,
  };
 
-void free_device_data(struct char_device *dev)
+static void free_device_data(struct char_device *dev)
 {
 	if(dev->data)
 	{
@@ -110,7 +110,6 @@ static int setup_device(void)
 	return ret;
 }
 
-// Called when device is called by kernel
 int open(struct inode *pinode, struct file *pfile)
 { 
 	/*if(down_interruptible(&fake_device->sem)) */
@@ -303,7 +302,6 @@ static __init int chrdev_init(void)
 	ret = setup_device();
 	if(ret < 0)
 		return ret;
-
 
 	// init char pipe
 	dev_t dev = MKDEV(major_num, minior_num+1); // makes a device number(major, minior+1)
