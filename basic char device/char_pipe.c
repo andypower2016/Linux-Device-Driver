@@ -24,7 +24,7 @@ struct char_pipe
         char *rp, *wp;                     /* where to read, where to write */
         int nreaders, nwriters;            /* number of openings for r/w */
         struct fasync_struct *async_queue; /* asynchronous readers */
-        struct mutex lock;              /* mutual exclusion mutex */
+        struct mutex lock;                 /* mutual exclusion mutex */
         struct cdev cdev;                  /* Char device structure */
 } *char_p_device ;
 
@@ -53,19 +53,32 @@ static int char_p_open(struct inode *inode, struct file *filp)
 	dev = container_of(inode->i_cdev, struct char_pipe, cdev);
 	filp->private_data = dev;
 
+	if (mutex_lock_interruptible(&dev->lock))
+	{
+	    return -ERESTARTSYS;
+	}
+
 	if ((filp->f_mode & FMODE_READ) && dev->nwriters <= 0) // no writers present
 	{
 	   if(filp->f_flags & O_NONBLOCK)
 	   {
+	   	mutex_unlock(&dev->lock);
 	   	DBG("pid (%d,\"%s\") reading: nonblock mode, no writter present, try again\n", current->pid, current->comm);
 	   	return -ERESTARTSYS;
 	   }
 	   ++dev->nreaders;
+	   mutex_unlock(&dev->lock);
+
 	   // blocks the currnt read process
 	   DBG("reader opens and blocks, pid=%d (%s)",current->pid, current->comm);
 	   if(wait_event_interruptible(open_wait_queue, wait_flag == 1))
 	   	return -ERESTARTSYS;
 
+	   // acqiure lock afer waking up
+	   if (mutex_lock_interruptible(&dev->lock))
+	   {
+	      return -ERESTARTSYS;
+	   }
 	   DBG("reader opens and proccessed, pid=%d (%s)",current->pid, current->comm);
 	}
 	else if((filp->f_mode & FMODE_READ) && dev->nwriters > 0)
@@ -73,41 +86,35 @@ static int char_p_open(struct inode *inode, struct file *filp)
 	   ++dev->nreaders;
 	}
 
-	if (mutex_lock_interruptible(&dev->lock))
-		return -ERESTARTSYS;
-	if (!dev->buffer) 
-	{
-		DBG("allocate device buffer pid=%d (%s)",current->pid, current->comm);
-		/* allocate the buffer */
-		dev->buffer = kmalloc(char_p_buffer, GFP_KERNEL);
-		if (!dev->buffer) 
-		{
-			mutex_unlock(&dev->lock);
-			return -ENOMEM;
-		}
-		dev->buffersize = char_p_buffer;
-		dev->end = dev->buffer + dev->buffersize;
-		dev->rp = dev->wp = dev->buffer; /* rd and wr from the beginning */
-	}
-	
-	/* use f_mode,not  f_flags: it's cleaner (fs/open.c tells why) */
-	/*if (filp->f_mode & FMODE_READ)
-		dev->nreaders++;*/
 	if (filp->f_mode & FMODE_WRITE)
 	{
-		DBG("writter opens, pid=%d (%s)",current->pid, current->comm);
-		dev->nwriters++;
-		wait_flag = 1;
-		wake_up_interruptible(&open_wait_queue); // wakes up all the reading process
+	    DBG("writter opens, pid=%d (%s)",current->pid, current->comm);
+	    dev->nwriters++;
+	    wait_flag = 1;
+	    wake_up_interruptible(&open_wait_queue); // wakes up all the reading process
+	}
+
+	if (!dev->buffer) 
+	{
+	   /* allocate the buffer */
+	   DBG("allocate device buffer pid=%d (%s)",current->pid, current->comm);
+	   dev->buffer = kmalloc(char_p_buffer, GFP_KERNEL);
+	   if (!dev->buffer) 
+	   {
+	      mutex_unlock(&dev->lock);
+	      return -ENOMEM;
+	   }
+	   dev->buffersize = char_p_buffer;
+	   dev->end = dev->buffer + dev->buffersize;
+	   dev->rp = dev->wp = dev->buffer; /* rd and wr from the beginning */				
 	}
 	mutex_unlock(&dev->lock);
-
 	return nonseekable_open(inode, filp);
 }
+
 static int char_p_release(struct inode *inode, struct file *filp)
 {
 	struct char_pipe *dev = filp->private_data;
-
 	/* remove this filp from the asynchronously notified filp's */
 	char_p_fasync(-1, filp, 0);
 	mutex_lock(&dev->lock);
@@ -117,13 +124,14 @@ static int char_p_release(struct inode *inode, struct file *filp)
 		dev->nwriters--;
 	if (dev->nreaders + dev->nwriters == 0) 
 	{
-		DBG("free buffer, pid=%d (%s)",current->pid, current->comm);
-		kfree(dev->buffer);
-		dev->buffer = NULL; /* the other fields are not checked on open */
+	   DBG("free buffer, pid=%d (%s)",current->pid, current->comm);
+	   kfree(dev->buffer);
+	   dev->buffer = NULL; /* the other fields are not checked on open */
 	}
 	if(dev->nwriters == 0 && (dev->rp == dev->wp)) // if there are no writers and no data, set wait_flag to 0
+        {
             wait_flag = 0;
-
+        }
 	mutex_unlock(&dev->lock);
 	return 0;
 }
@@ -206,7 +214,7 @@ static int char_getwritespace(struct char_pipe *dev, struct file *filp)
 			return -ERESTARTSYS; /* signal: tell the fs layer to handle it */
 		if (mutex_lock_interruptible(&dev->lock))
 			return -ERESTARTSYS;
-	}
+	}	
 	return 0;
 }	
 
@@ -262,7 +270,6 @@ struct file_operations char_pipe_fops =
 	.fasync =	char_p_fasync,
 	/*.llseek =	no_llseek,
 	.poll =		scull_p_poll,
-	.unlocked_ioctl = scull_ioctl,
 	*/
 };
 
