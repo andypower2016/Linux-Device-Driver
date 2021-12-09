@@ -1,2 +1,5 @@
 char_device 
 2021/12/01 written by Chuo-Yu Yang
+
+1)char_device implements the basic char driver and device, device data uses 2d char array for storage
+2)char_pipe implements the basic char driver and device with blocking and non-blocking I/O mechanism. Uses a 1d array for data storage.
