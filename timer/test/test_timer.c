@@ -20,41 +20,6 @@
 #include <linux/timekeeping.h> 
 
 #define dbg(format, args...) printk("[%s]:%d => " format "\n" , __FUNCTION__, __LINE__, ##args)
-/*struct context
-{
-    struct seq_file *seq;
-    struct timer_list tlist;
-    struct completion done;
-} g_context;
-
-static void timer_func(struct timer_list* t)
-{
-    struct context *ctx = container_of(t, struct context, tlist);
-    unsigned long now = jiffies;
-    seq_printf(ctx->seq, "jiffies in timer_func = %ld\n", now);
-    complete(&ctx->done);
-}
-
-static void init_context(void)
-{
-     g_context.seq = NULL;
-     init_completion(&g_context.done);
-}*/
-
-
-/*
-static int show(struct seq_file *m, void *v)  // call-back function of seq_file
-{
-    
-    if () 
-    {
-      ret = -ERESTARTSYS;
-      goto out;
-    }
-    ret = 0;
-out:
-    return ret;
-}*/
 
 struct timer_list t;
 spinlock_t g_spin_lock;
