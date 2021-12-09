@@ -35,6 +35,10 @@ static int char_p_minor_num = 1;
 static int char_p_nr_devs = 1;	// number of devices
 static int char_p_buffer = 4000;
 
+// performing blocking on open
+static wait_queue_head_t open_wait_queue;
+static int wait_flag = 0;
+
 
 static int char_p_fasync(int fd, struct file *filp, int mode)
 {
@@ -46,16 +50,33 @@ static int char_p_fasync(int fd, struct file *filp, int mode)
 static int char_p_open(struct inode *inode, struct file *filp)
 {
 	struct char_pipe *dev;
-
 	dev = container_of(inode->i_cdev, struct char_pipe, cdev);
 	filp->private_data = dev;
 
+	if ((filp->f_mode & FMODE_READ) && dev->nwriters <= 0) // no writers present
+	{
+	   if(filp->f_flags & O_NONBLOCK)
+	   {
+	   	DBG("pid (%d,\"%s\") reading: nonblock mode, no writter present, try again\n", current->pid, current->comm);
+	   	return -ERESTARTSYS;
+	   }
+	   // blocks the currnt read process
+	   DBG("reader opens and blocks, pid=%d (%s)",current->pid, current->comm);
+	   if(wait_event_interruptible(open_wait_queue, wait_flag == 1))
+	   	return -ERESTARTSYS;
+
+	   DBG("reader opens and proccessed, pid=%d (%s)",current->pid, current->comm);
+	}
+	
+
 	if (mutex_lock_interruptible(&dev->lock))
 		return -ERESTARTSYS;
-	if (!dev->buffer) {
+	if (!dev->buffer) 
+	{
 		/* allocate the buffer */
 		dev->buffer = kmalloc(char_p_buffer, GFP_KERNEL);
-		if (!dev->buffer) {
+		if (!dev->buffer) 
+		{
 			mutex_unlock(&dev->lock);
 			return -ENOMEM;
 		}
@@ -68,7 +89,12 @@ static int char_p_open(struct inode *inode, struct file *filp)
 	if (filp->f_mode & FMODE_READ)
 		dev->nreaders++;
 	if (filp->f_mode & FMODE_WRITE)
+	{
+		DBG("writter opens, pid=%d (%s)",current->pid, current->comm);
 		dev->nwriters++;
+		wait_flag = 1;
+		wake_up_interruptible(&open_wait_queue); // wakes up all the reading process
+	}
 	mutex_unlock(&dev->lock);
 
 	return nonseekable_open(inode, filp);
@@ -88,6 +114,9 @@ static int char_p_release(struct inode *inode, struct file *filp)
 		kfree(dev->buffer);
 		dev->buffer = NULL; /* the other fields are not checked on open */
 	}
+	if(dev->nwriters == 0) // if there are no writers, set wait_flag to 0
+            wait_flag = 0;
+
 	mutex_unlock(&dev->lock);
 	return 0;
 }
@@ -108,8 +137,11 @@ static ssize_t char_p_read(struct file *filp, char __user *buf, size_t count,
 	{ 
 		mutex_unlock(&dev->lock); /* release the lock */
 		if (filp->f_flags & O_NONBLOCK)
-			return -EAGAIN;
-		DBG("\"%s\" reading: going to sleep\n", current->comm);
+		{
+		    DBG("pid (%d,\"%s\") reading: nonblock mode, try again\n", current->pid, current->comm);
+		    return -EAGAIN;
+		}
+		DBG("pid (%d,\"%s\") reading: going to sleep\n", current->pid, current->comm);
 		if (wait_event_interruptible(dev->inq, (dev->rp != dev->wp)))
 			return -ERESTARTSYS; /* signal: tell the fs layer to handle it */
 		/* otherwise loop, but first reacquire the lock */
@@ -133,7 +165,7 @@ static ssize_t char_p_read(struct file *filp, char __user *buf, size_t count,
 
 	/* finally, awake any writers and return */
 	wake_up_interruptible(&dev->outq);
-	DBG("\"%s\" did read %li bytes\n",current->comm, (long)count);
+	DBG("pid (%d,\"%s\") did read %li bytes\n",current->pid, current->comm, (long)count);
 	return count;
 }
 
@@ -157,11 +189,12 @@ static int char_getwritespace(struct char_pipe *dev, struct file *filp)
 		mutex_unlock(&dev->lock);
 		if (filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
-		DBG("\"%s\" writing: going to sleep\n",current->comm);
+		DBG("pid (%d,\"%s\") writing: going to sleep\n",current->pid, current->comm);
 		prepare_to_wait(&dev->outq, &wait, TASK_INTERRUPTIBLE);
 		if (spacefree(dev) == 0)
 			schedule();
 		finish_wait(&dev->outq, &wait);
+		DBG("pid (%d,\"%s\") writing: wake up\n",current->pid, current->comm);
 		if (signal_pending(current))
 			return -ERESTARTSYS; /* signal: tell the fs layer to handle it */
 		if (mutex_lock_interruptible(&dev->lock))
@@ -268,12 +301,15 @@ int char_p_init(dev_t dev)
 	}
 	memset(char_p_device, 0, char_p_nr_devs * sizeof(struct char_pipe));
 	//for (i = 0; i < char_p_nr_devs; i++) 
-	//{
+	//{	
 		init_waitqueue_head(&(char_p_device->inq));
 		init_waitqueue_head(&(char_p_device->outq));
 		mutex_init(&char_p_device->lock);
 		char_p_setup_cdev(char_p_device, i);
 	//}
+
+	init_waitqueue_head(&open_wait_queue);
+
 	return result;
 }
 
