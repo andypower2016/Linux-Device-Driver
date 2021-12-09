@@ -1,2 +1,4 @@
-An demonstration of basic seq_file operations, create proc files (virtual files).
+An demonstration of basic seq_file operations, create proc files (proc is a virtual filesystem).
 Often used for debugging drivers, proc privides and interface between user space and kernel space.
+
+related linux command : cat /proc/your_proc
