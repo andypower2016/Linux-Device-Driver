@@ -8,16 +8,6 @@
 
 #define DBG(format, arg...) printk("[%s]:%d => " format "\n",__FUNCTION__,__LINE__,##arg)
 
-// fake char device structure
-struct char_device 
-{
-    char **data;	      // device data for file operation (read/write)
-    int size;		      // ammount of data
-    struct semaphore sem; // semaphore, for locking the device
-    struct cdev mcdev;    // cdev
-    char* ioctrl_data;    // for ioctl test
-};
-
 // device driver prototypes
 int open(struct inode *, struct file *);
 ssize_t read(struct file *, char __user *, size_t, loff_t *);

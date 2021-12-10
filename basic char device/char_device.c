@@ -15,7 +15,17 @@
 #include "ioctrl_test.h"
 #include "char_device.h"
 
-struct char_device *fake_device = NULL;
+// char device structure
+struct char_device 
+{
+    char **data;	      // device data for file operation (read/write)
+    int size;		      // ammount of data
+    struct semaphore sem; // semaphore, for locking the device
+    struct cdev mcdev;    // cdev
+    char* ioctrl_data;    // for ioctl test
+};
+
+struct char_device *char_dev = NULL;
 // device registraion datas
 int minior_num = 0; // minor number of the device, we set to zero here
 int major_num; 		// will store our major number, extracted from dev_t using MAJOR macro
@@ -30,9 +40,6 @@ int ret;
 spinlock_t g_spin_lock;
 unsigned long flags;
 
-wait_queue_head_t wq;
-static int wait_flag = 0;
-
 struct file_operations fileop = 
 {
     .owner = THIS_MODULE,
@@ -44,7 +51,7 @@ struct file_operations fileop =
     .unlocked_ioctl = ioctl_test,
  };
 
-static void free_device_data(struct char_device *dev)
+static void free_dev_data(struct char_device *dev)
 {
 	if(dev->data)
 	{
@@ -62,58 +69,59 @@ static void free_device_data(struct char_device *dev)
 		kfree(dev->ioctrl_data);
 }
 
-static void cleanup_device(void)
+static void char_cleanup(void)
 {
-	if(fake_device)
+	if(char_dev)
 	{
-	   cdev_del(&fake_device->mcdev);
-	   free_device_data(fake_device);
-	   kfree(fake_device);
+	   cdev_del(&char_dev->mcdev);
+	   free_dev_data(char_dev);
+	   kfree(char_dev);
 	}
-	unregister_chrdev_region(dev_num, 1);
+	unregister_chrdev_region(dev_num, dev_count);
 }
 
-static int setup_device(void)
+static int char_init(void)
 {
     ret = 0; // 0 for success
 	
-	fake_device = kmalloc(sizeof(struct char_device), GFP_KERNEL);
-	if(!fake_device)
+	char_dev = kmalloc(sizeof(struct char_device), GFP_KERNEL);
+	if(!char_dev)
 	{
-	   printk(KERN_ALERT "Fail to kalloc device\n");
+	   DBG("Fail to kalloc device");
 	   ret = -ENOMEM;
-	   cleanup_device();
-	   return ret;
+	   goto err;
 	}
-	memset(fake_device, 0, sizeof(struct char_device));	
+	memset(char_dev, 0, sizeof(struct char_device));	
 
 	// kmalloc ctrl data
-	fake_device->ioctrl_data = (char*) kmalloc(buffer_size, GFP_KERNEL);
-	memset(fake_device->ioctrl_data, 0, buffer_size);
+	char_dev->ioctrl_data = (char*) kmalloc(buffer_size, GFP_KERNEL);
+	memset(char_dev->ioctrl_data, 0, buffer_size);
 	char init_data[] = "ctl init data";
-	memcpy(fake_device->ioctrl_data, init_data, strlen(init_data));
+	memcpy(char_dev->ioctrl_data, init_data, strlen(init_data));
 
 	// init semaphore
-	sema_init(&fake_device->sem, 1); // initial value one, means nothing is locked
+	sema_init(&char_dev->sem, 1); // initial value one, means nothing is locked
 	
-	// init wait queue
-	init_waitqueue_head(&wq);
-
 	// init cdev
-	cdev_init(&fake_device->mcdev, &fileop);
-	fake_device->mcdev.owner = THIS_MODULE;
-	ret = cdev_add(&fake_device->mcdev, dev_num, 1);
+	cdev_init(&char_dev->mcdev, &fileop);
+	char_dev->mcdev.owner = THIS_MODULE;
+	ret = cdev_add(&char_dev->mcdev, dev_num, 1);
 	if(ret < 0)
 	{
 	   DBG("Fail to add cdev to kernel");
+	   goto err;
 	}
+	return ret;
+	
+err:
+	char_cleanup();
 	return ret;
 }
 
 int open(struct inode *pinode, struct file *pfile)
 { 
-	/*if(down_interruptible(&fake_device->sem)) */
-	if(down_trylock(&fake_device->sem)) 
+	/*if(down_interruptible(&char_dev->sem)) */
+	if(down_trylock(&char_dev->sem)) 
 	{
 	    DBG("Device is currently in use");
 	}
@@ -125,7 +133,7 @@ int open(struct inode *pinode, struct file *pfile)
 int release(struct inode *pinode, struct file *pfile)
 {
 	DBG("Closed device");
-	up(&fake_device->sem);
+	up(&char_dev->sem);
 	return 0;
 }
 
@@ -249,10 +257,6 @@ long int ioctl_test(struct file *file, unsigned cmd, unsigned long arg)
 	switch(cmd)
 	{
 		case WR_VALUE:
-			// wakes up all the process in the waitqueue (wq)
-			wait_flag = 1;
-			wake_up_interruptible(&wq);
- 
 			memset(dev->ioctrl_data, 0, strlen(dev->ioctrl_data));
 			if(copy_from_user(dev->ioctrl_data, (char *) arg, strlen((char *)arg))) 
 			{
@@ -268,15 +272,6 @@ long int ioctl_test(struct file *file, unsigned cmd, unsigned long arg)
 				DBG("Error copying data to user!");
 			else
 				DBG("The data was copied!");
-
-			// Puts the current reading process to waitqueue, until wake up is called and condition satisfied
-			// function returns -ERESTARTSYS if it was interrupted by a signal, 0 when condition is true.
-			if(wait_event_interruptible(wq, wait_flag != 0))
-			{
-				DBG("interrupt signal occurs");
-				return -ERESTARTSYS;
-			}
-			wait_flag = 0; // reset flag to 0
 			break;
 		default:
 			break;
@@ -284,9 +279,9 @@ long int ioctl_test(struct file *file, unsigned cmd, unsigned long arg)
 	return 0;
 }
 
-static __init int chrdev_init(void)
+static __init int char_device_init(void)
 {
-	// (1) use dynamic allocation to assign our device
+	// use dynamic allocation to assign our device
 	ret = alloc_chrdev_region(&dev_num, minior_num, dev_count, DEVICE_NAME);
 	if(ret < 0)
 	{
@@ -294,16 +289,14 @@ static __init int chrdev_init(void)
 	   return ret;
 	}
 	major_num = MAJOR(dev_num); // extracts the major number and store in variable
-	DBG("Load Device");
-	DBG("Major number=%d", major_num);
-	DBG("Use mknod /dev/%s c %d 0\" for device file", DEVICE_NAME, major_num);
+	DBG("Load Device, Major number=%d", major_num);
 
-	// setup device dynamically
-	ret = setup_device();
+	// char device init
+	ret = char_init();
 	if(ret < 0)
 		return ret;
 
-	// init char pipe
+	// char pipe init
 	dev_t dev = MKDEV(major_num, minior_num+1); // makes a device number(major, minior+1)
 	ret = char_p_init(dev);
 	if(ret < 0)
@@ -312,15 +305,15 @@ static __init int chrdev_init(void)
 	return 0;
 }
 
-static __exit void chrdev_exit(void)
+static __exit void char_device_exit(void)
 {
-	cleanup_device();
+	char_cleanup();
 	char_p_cleanup();
 	DBG("Unload Device Complete");
 }
 
-module_init(chrdev_init);
-module_exit(chrdev_exit);
+module_init(char_device_init);
+module_exit(char_device_exit);
 MODULE_LICENSE("Dual BSD/GPL");
 //MODULE_LICENSE("GPL");
 
