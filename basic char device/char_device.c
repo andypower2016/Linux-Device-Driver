@@ -120,11 +120,10 @@ err:
 
 int open(struct inode *pinode, struct file *pfile)
 { 
-	/*if(down_interruptible(&char_dev->sem)) */
-	if(down_trylock(&char_dev->sem)) 
-	{
-	    DBG("Device is currently in use");
-	}
+	//if(down_trylock(&char_dev->sem)) 
+	if(down_interruptible(&char_dev->sem))  // Only one process is allowed when accessing this device
+	    return -ERESTARTSYS;
+	
 	struct char_device *dev = container_of(pinode->i_cdev, struct char_device, mcdev);
 	pfile->private_data = dev;
 	DBG("Opened device ! device datasize=%d\n", dev->size);
