@@ -30,8 +30,8 @@ struct char_pipe
 
 #define CHAR_PIPE "char_pipe"
 static int char_p_dev_num; // device number
-static int char_p_major_num;
-static int char_p_minor_num = 1;	
+//static int char_p_major_num;
+//static int char_p_minor_num = 1;	
 static int char_p_nr_devs = 1;	// number of devices
 static int char_p_buffer = 4000;
 
@@ -80,6 +80,11 @@ static int char_p_open(struct inode *inode, struct file *filp)
 	    if(dev->nwriters <= 0)
 	    {
 	    	mutex_unlock(&dev->lock);
+	    	if(filp->f_flags & O_NONBLOCK) // if non-block mode, return 
+	    	{
+	    	    dev->nreaders--;
+	    	    return -ERESTARTSYS;	
+	    	}
 	    	DBG("reader blocks, pid=%d (%s)",current->pid, current->comm);
 	    	if(wait_event_interruptible(open_wait_queue, wait_flag == 1))
 	    	{
