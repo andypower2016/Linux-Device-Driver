@@ -1,4 +1,4 @@
-// An user space program that uses ioctl to interact with device driver
+// An user program interacts with char_device using ioctl
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
