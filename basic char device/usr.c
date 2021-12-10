@@ -1,3 +1,4 @@
+// A user program that interacts with char_device
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
