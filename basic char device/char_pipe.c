@@ -26,7 +26,8 @@ struct char_pipe
         struct fasync_struct *async_queue; /* asynchronous readers */
         struct mutex lock;                 /* mutual exclusion mutex */
         struct cdev cdev;                  /* Char device structure */
-} *char_p_device ;
+} ;
+static struct char_pipe *char_p_device = NULL; // A single char_pipe device
 
 #define CHAR_PIPE "char_pipe"
 static int char_p_dev_num; // device number
@@ -47,11 +48,13 @@ static int char_p_fasync(int fd, struct file *filp, int mode)
 	return fasync_helper(fd, filp, mode, &dev->async_queue);
 }
 
-static int char_p_open(struct inode *inode, struct file *filp)
+static int char_p_open(struct inode *inode, struct file *filep) // filep represents an open file, differs between different open processes
 {
 	struct char_pipe *dev;
-	dev = container_of(inode->i_cdev, struct char_pipe, cdev);
-	filp->private_data = dev;
+	dev = container_of(inode->i_cdev, struct char_pipe, cdev); // has the same address pointed to the device structure
+	filep->private_data = dev;  
+	DBG("process opened , pid=%d (%s) , faddr=%p, devaddr=%p",
+		current->pid, current->comm, filep, dev);
 
 	if (mutex_lock_interruptible(&dev->lock))
 	{
@@ -74,13 +77,13 @@ static int char_p_open(struct inode *inode, struct file *filp)
 	dev->rp = dev->wp = dev->buffer; /* rd and wr from the beginning */
 	
 	/* use f_mode,not  f_flags: it's cleaner (fs/open.c tells why) */
-	if (filp->f_mode & FMODE_READ)
+	if (filep->f_mode & FMODE_READ)
 	{
 	    dev->nreaders++;
 	    if(dev->nwriters <= 0)
 	    {
 	    	mutex_unlock(&dev->lock);
-	    	if(filp->f_flags & O_NONBLOCK) // if non-block mode, return 
+	    	if(filep->f_flags & O_NONBLOCK) // if non-block mode, return 
 	    	{
 	    	    dev->nreaders--;
 	    	    return -ERESTARTSYS;	
@@ -98,7 +101,7 @@ static int char_p_open(struct inode *inode, struct file *filp)
 	    DBG("reader opens, pid=%d (%s)",current->pid, current->comm);
 	    
 	}
-	if (filp->f_mode & FMODE_WRITE)
+	if (filep->f_mode & FMODE_WRITE)
 	{
 	    DBG("writter opens, pid=%d (%s)",current->pid, current->comm);
 	    dev->nwriters++;
@@ -107,7 +110,7 @@ static int char_p_open(struct inode *inode, struct file *filp)
 	}
 
 	mutex_unlock(&dev->lock);
-	return nonseekable_open(inode, filp);
+	return nonseekable_open(inode, filep);
 }
 
 static int char_p_release(struct inode *inode, struct file *filp)
