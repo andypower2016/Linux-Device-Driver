@@ -34,7 +34,7 @@ static int char_p_dev_num; // device number
 //static int char_p_major_num;
 //static int char_p_minor_num = 1;	
 static int char_p_nr_devs = 1;	// number of devices
-static int char_p_buffer = 4000;
+static int char_p_buffer = 3;   // pipe buffer size
 
 // performing blocking on open
 static wait_queue_head_t open_wait_queue;
@@ -70,11 +70,11 @@ static int char_p_open(struct inode *inode, struct file *filep) // filep represe
 	   {
 	      mutex_unlock(&dev->lock);
 	      return -ENOMEM;
-	   }			
+	   }	   
 	}
 	dev->buffersize = char_p_buffer;
 	dev->end = dev->buffer + dev->buffersize;
-	dev->rp = dev->wp = dev->buffer; /* rd and wr from the beginning */
+	dev->rp = dev->wp = dev->buffer; /* rd and wr from the beginning */		
 	
 	/* use f_mode,not  f_flags: it's cleaner (fs/open.c tells why) */
 	if (filep->f_mode & FMODE_READ)
@@ -166,9 +166,18 @@ static ssize_t char_p_read(struct file *filp, char __user *buf, size_t count,
 	}
 	/* ok, data is there, return something */
 	if (dev->wp > dev->rp)
-		count = min(count, (size_t)(dev->wp - dev->rp));
+	{
+		size_t gap = (size_t)(dev->wp - dev->rp);
+		DBG("pid (%d,\"%s\") reading: (dev->wp - dev->rp)=%ld\n", current->pid, current->comm, gap);
+		count = min(count, gap);
+	}
 	else /* the write pointer has wrapped, return data up to dev->end */
-		count = min(count, (size_t)(dev->end - dev->rp));
+	{
+		size_t gap = (size_t)(dev->end - dev->rp);
+		DBG("pid (%d,\"%s\") reading: (dev->end - dev->rp)=%ld\n", current->pid, current->comm, gap);
+		count = min(count, gap);
+	}
+
 	if (copy_to_user(buf, dev->rp, count)) 
 	{
 		mutex_unlock (&dev->lock);
@@ -176,7 +185,10 @@ static ssize_t char_p_read(struct file *filp, char __user *buf, size_t count,
 	}
 	dev->rp += count;
 	if (dev->rp == dev->end)
+	{
+		DBG("pid (%d,\"%s\") reading: wrapped\n",current->pid, current->comm);
 		dev->rp = dev->buffer; /* wrapped */
+	}
 	mutex_unlock (&dev->lock);
 
 	/* finally, awake any writers and return */
@@ -247,7 +259,10 @@ static ssize_t char_p_write(struct file *filp, const char __user *buf, size_t co
 	}
 	dev->wp += count;
 	if (dev->wp == dev->end)
+	{
+		DBG("pid (%d,\"%s\") writing: wrapped\n",current->pid, current->comm);
 		dev->wp = dev->buffer; /* wrapped */
+	}
 	mutex_unlock(&dev->lock);
 
 	/* finally, awake any reader */
