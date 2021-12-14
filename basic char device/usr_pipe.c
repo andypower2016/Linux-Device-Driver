@@ -5,6 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <poll.h>
 #include "ioctrl_test.h"
 
 #define DEVICE_NAME "/dev/char_pipe"
@@ -26,15 +27,30 @@ int main(int argc, char** argv)
     char ch;
     char buffer[buff_size];
     int ret;
+
+
+    struct pollfd pfds_write = {
+      .fd = fd,
+      .events = POLLOUT,
+    };
+
+    struct pollfd pfds_read = {
+      .fd = fd,
+      .events = POLLIN,
+    };
+    int rc;
+    int nfds = 1; // number of pfds, I use one in this example.
+
+
     do
     {
       memset(buffer, 0, sizeof(buffer));
       if(ch != '\n')
-        printf("enter r/w/e\n");
+        printf("enter r/w/p/e\n");
       scanf("%c", &ch);
       switch(ch)
       {
-           case 'r':
+           /*case 'r': // read
             while(1) // read infinitly
             {
               ret = read(fd, buffer, buff_size);
@@ -45,8 +61,8 @@ int main(int argc, char** argv)
               }
               printf("read from device = %s\n", buffer);
             }
-            break; 
-           case 'w':   
+            break; */
+           case 'w': // write
              printf("enter data to write (data)\n");
              scanf("%s", buffer);      
              ret = write(fd, buffer, strlen(buffer));
@@ -55,6 +71,28 @@ int main(int argc, char** argv)
                printf("write fail\n");
              }
              printf("write %s to device\n", buffer);  
+             break;
+           case 'p': // poll
+             // polling to check writable
+             rc = poll(&pfds_write, nfds, 0); 
+             if(rc)
+             {
+               printf("writable\n");
+             }  
+             else
+             {
+               printf("currently not writable\n");
+             }
+
+             rc = poll(&pfds_read, nfds, 0); 
+             if(rc)
+             {
+               printf("readable\n");
+             }  
+             else
+             {
+               printf("currently not readable\n");
+             }
              break;
            case 'e':
             close(fd);

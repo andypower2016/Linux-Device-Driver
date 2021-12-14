@@ -44,7 +44,7 @@ static int wait_flag = 0;
 static int char_p_fasync(int fd, struct file *filp, int mode)
 {
 	struct char_pipe *dev = filp->private_data;
-
+	DBG("pid=%d (%s) mode=%d", current->pid, current->comm, mode);
 	return fasync_helper(fd, filp, mode, &dev->async_queue);
 }
 
@@ -53,8 +53,8 @@ static int char_p_open(struct inode *inode, struct file *filep) // filep represe
 	struct char_pipe *dev;
 	dev = container_of(inode->i_cdev, struct char_pipe, cdev); // has the same address pointed to the device structure
 	filep->private_data = dev;  
-	DBG("process opened , pid=%d (%s) , faddr=%p, devaddr=%p",
-		current->pid, current->comm, filep, dev);
+	DBG("process opened , pid=%d (%s) , faddr=%p, inodeaddr=%p",
+		current->pid, current->comm, filep, inode);
 
 	if (mutex_lock_interruptible(&dev->lock))
 	{
@@ -260,6 +260,34 @@ static ssize_t char_p_write(struct file *filp, const char __user *buf, size_t co
 	return count;
 }
 
+
+static unsigned int scull_p_poll(struct file *filp, poll_table *wait)
+{
+	//DBG("pid (%d,\"%s\") polling \n",current->pid, current->comm);
+	struct char_pipe *dev = filp->private_data;
+	unsigned int mask = 0;
+	/*
+	 * The buffer is circular; it is considered full
+	 * if "wp" is right behind "rp" and empty if the
+	 * two are equal.
+	 */
+	mutex_lock(&dev->lock);
+	poll_wait(filp, &dev->inq,  wait);
+	poll_wait(filp, &dev->outq, wait);
+	if (dev->rp != dev->wp)
+	{
+		mask |= POLLIN | POLLRDNORM;	/* readable */
+		DBG("pid (%d,\"%s\") polling readable \n",current->pid, current->comm);
+	}
+	if (spacefree(dev))
+	{
+		mask |= POLLOUT | POLLWRNORM;	/* writable */
+		DBG("pid (%d,\"%s\") polling writable \n",current->pid, current->comm);
+	}
+	mutex_unlock(&dev->lock);
+	return mask;
+}
+
 struct file_operations char_pipe_fops = 
 {
 	.owner =	THIS_MODULE,
@@ -269,9 +297,8 @@ struct file_operations char_pipe_fops =
 	.release =	char_p_release,
 	.unlocked_ioctl = ioctl_test,
 	.fasync =	char_p_fasync,
-	/*.llseek =	no_llseek,
 	.poll =		scull_p_poll,
-	*/
+	.llseek =	no_llseek,   // disable llseek
 };
 
 /*
