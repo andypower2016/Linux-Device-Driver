@@ -3,8 +3,9 @@
 
 #define DEVICE_NAME "char_device"
 
+// total 120 kb
 #define DATA_NUM  30   // 30 chunks
-#define DATA_SIZE 4096 // chunk length
+#define DATA_SIZE 4096 // chunk length (4kb)
 
 #define DBG(format, arg...) printk("[%s]:%d => " format "\n",__FUNCTION__,__LINE__,##arg)
 
