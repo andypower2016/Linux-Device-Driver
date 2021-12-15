@@ -176,19 +176,19 @@ static ssize_t char_p_read(struct file *filp, char __user *buf, size_t count,
 	}
 
 	int init = 0;
-	if (dev->rear > dev->front) // 0 1 2 3 4
+	if (dev->rear > dev->front) 
 	{
 		size_t gap = (size_t)(dev->rear - dev->front + 1);
 		DBG("pid (%d,\"%s\") reading: (dev->rear %d - dev->front %d + 1)=%ld\n", current->pid, current->comm, dev->rear, dev->front, gap);
 		count = min(count, gap);
 	}
 	else if(dev->rear < dev->front)
-	{  // 0 1 2 3 4 5 
+	{ 
 		size_t gap = (size_t)(dev->buffersize - dev->front);
 		DBG("pid (%d,\"%s\") reading: (dev->buffersize - dev->front)=%ld\n", current->pid, current->comm, gap);
 		count = min(count, gap);
 	}
-	else // 1 data left
+	else 
 	{
 		count = 1;
 		init = 1;
@@ -204,7 +204,7 @@ static ssize_t char_p_read(struct file *filp, char __user *buf, size_t count,
 	{
 		dev->front = dev->rear = -1;
 	}
-	else // 0 1 2 3 4
+	else
 	{
 		dev->front = (dev->front + count - 1) % dev->buffersize;
 		if(dev->front == dev->rear)
