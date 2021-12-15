@@ -233,11 +233,11 @@ static int spacefree(struct char_pipe *dev)
 
 	if(dev->rear >= dev->front)
 	{
-	   return dev->buffersize - dev->rear - 1;
+	   return dev->buffersize - (dev->rear-dev->front) - 1;
 	}
 	return dev->front - dev->rear - 1;
 }
-
+// 0 1 2 3 4
 /* Wait for space for writing; caller must hold device semaphore.  On
  * error the semaphore will be released before returning. */
 static int char_getwritespace(struct char_pipe *dev, struct file *filp)
@@ -320,7 +320,7 @@ static unsigned int char_p_poll(struct file *filp, poll_table *wait)
 		mask |= POLLIN | POLLRDNORM;	/* readable */
 		DBG("pid (%d,\"%s\") polling readable \n",current->pid, current->comm);
 	}
-	if (spacefree(dev))
+	if (spacefree(dev) > 0)
 	{
 		mask |= POLLOUT | POLLWRNORM;	/* writable */
 		DBG("pid (%d,\"%s\") polling writable \n",current->pid, current->comm);
