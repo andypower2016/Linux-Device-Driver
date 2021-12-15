@@ -20,10 +20,10 @@
 struct char_pipe 
 {
 	  wait_queue_head_t inq, outq;       /* read and write queues */
-	  char *buffer; 						    /* begin of buf, circular queue */
-	  int buffersize;                    /* used in pointer arithmetic */
-	  int front;
-	  int rear;
+	  char *buffer; 		     /* begin of buf, circular queue */
+	  int buffersize;                    /* size of the buffer */
+	  int front;                         /* points to the first index of available data */
+	  int rear;                          /* points to the last index of available data */
 	  int nreaders, nwriters;            /* number of openings for r/w */
 	  struct fasync_struct *async_queue; /* asynchronous readers */
 	  struct mutex lock;                 /* mutual exclusion mutex */
@@ -174,8 +174,7 @@ static ssize_t char_p_read(struct file *filp, char __user *buf, size_t count,
 		if (mutex_lock_interruptible(&dev->lock))
 			return -ERESTARTSYS;
 	}
-
-	int init = 0;
+	// 0 1 2 3 4
 	if (dev->rear > dev->front) 
 	{
 		size_t gap = (size_t)(dev->rear - dev->front + 1);
@@ -188,28 +187,32 @@ static ssize_t char_p_read(struct file *filp, char __user *buf, size_t count,
 		DBG("pid (%d,\"%s\") reading: (dev->buffersize - dev->front)=%ld\n", current->pid, current->comm, gap);
 		count = min(count, gap);
 	}
-	else 
+	else // rear == front (one bye of data left)
 	{
-		count = 1;
-		init = 1;
-	}
-
+	        count = 1;
+        }
+	
 	if (copy_to_user(buf, &dev->buffer[dev->front], count)) 
 	{
 		mutex_unlock (&dev->lock);
 		return -EFAULT;
 	}
 
-	if(init)
+	if(dev->front == dev->rear) // 1 byte data left
 	{
 		dev->front = dev->rear = -1;
 	}
 	else
-	{
-		dev->front = (dev->front + count - 1) % dev->buffersize;
-		if(dev->front == dev->rear)
+	{ 
+		int res = dev->front + count - 1 ;
+		if(res == dev->rear)
 		{
-			dev->front = dev->rear = -1;
+		       dev->front = dev->rear = -1;
+		}
+		else
+		{
+		       // front points the the next available data, may equal to rear, in this case the queue has only one byte of available data left.
+		       dev->front = (res+1) % dev->buffersize;
 		}
 	}
 	mutex_unlock (&dev->lock);
