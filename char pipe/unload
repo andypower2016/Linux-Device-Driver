@@ -1,0 +1,7 @@
+#!/bin/sh
+
+module="char_pipe"
+major_device="char_pipe"
+
+sudo rmmod $module
+sudo rm -f /dev/$major_device
