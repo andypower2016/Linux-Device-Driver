@@ -174,7 +174,6 @@ static ssize_t char_p_read(struct file *filp, char __user *buf, size_t count,
 		if (mutex_lock_interruptible(&dev->lock))
 			return -ERESTARTSYS;
 	}
-	// 0 1 2 3 4
 	if (dev->rear > dev->front) 
 	{
 		size_t gap = (size_t)(dev->rear - dev->front + 1);
@@ -237,7 +236,7 @@ static int spacefree(struct char_pipe *dev)
 	}
 	return dev->front - dev->rear - 1;
 }
-// 0 1 2 3 4
+
 /* Wait for space for writing; caller must hold device semaphore.  On
  * error the semaphore will be released before returning. */
 static int char_getwritespace(struct char_pipe *dev, struct file *filp)
