@@ -1,0 +1,2 @@
+2021/12/15 written by Chuo-Yu Yang
+char pipe using circular queue, perform blocking I/O and polling operations
