@@ -11,6 +11,17 @@
 #define DEVICE_NAME "/dev/char_pipe"
 #define buff_size 256
 
+struct pollfd pfds_write = {
+      .fd = fd,
+      .events = POLLOUT,
+    };
+
+    struct pollfd pfds_read = {
+      .fd = fd,
+      .events = POLLIN,
+    };
+    
+
 int main(int argc, char** argv)
 {
     int mode;
@@ -21,29 +32,44 @@ int main(int argc, char** argv)
        printf("Opening device fail !\n");
        return -1;
     }
-    if(mode == O_RDONLY)
-    {
-      goto readonly;
-    }
-
-    char ch;
+    
     char buffer[buff_size];
+    char ch;
     int ret;
-
-
-    struct pollfd pfds_write = {
-      .fd = fd,
-      .events = POLLOUT,
-    };
-
-    struct pollfd pfds_read = {
-      .fd = fd,
-      .events = POLLIN,
-    };
     int rc;
     int nfds = 1; // number of pfds, I use one in this example.
 
-    do
+    if(mode == O_RDONLY)
+    {
+      
+    char input[256];
+
+      do
+    {
+      printf("enter how many bytes to read\n");
+      fgets(input, sizeof(input), stdin);
+      int len = strlen(input);
+      if(len > 0)
+      {
+        input[len-1] = 0;
+      }
+      ret = read(fd, buffer, atoi(input));
+      if(ret == -1)
+      {
+        //printf("read fail or no data is available\n");
+        continue;
+      }
+      else
+      {
+        printf("read from device = %s, size = %ld\n", buffer, strlen(buffer));
+        memset(buffer, 0, strlen(buffer));
+      }
+    } while(1); // read infinitly       
+ 
+    }
+    else
+    {
+        do
     {
       memset(buffer, 0, sizeof(buffer));
       if(ch != '\n')
@@ -103,34 +129,8 @@ int main(int argc, char** argv)
       } 
       
     }while(1);
-    close(fd);   
-    return 0;
-
-    char input[256];
-
-readonly:
-    do
-    {
-      printf("enter how many bytes to read\n");
-      fgets(input, sizeof(input), stdin);
-      int len = strlen(input);
-      if(len > 0)
-      {
-        input[len-1] = 0;
-      }
-      ret = read(fd, buffer, atoi(input));
-      if(ret == -1)
-      {
-        //printf("read fail or no data is available\n");
-        continue;
-      }
-      else
-      {
-        printf("read from device = %s, size = %ld\n", buffer, strlen(buffer));
-        memset(buffer, 0, strlen(buffer));
-      }
-    } while(1); // read infinitly       
- 
+        
+    }
     close(fd);   
     return 0;
 }
