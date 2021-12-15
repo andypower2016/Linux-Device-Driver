@@ -41,26 +41,27 @@ int main(int argc, char** argv)
 
     if(mode == O_RDONLY)
     {
+        memset(buffer, 0, sizeof(buffer));
         char input[256];
         do
         {
             printf("enter how many bytes to read\n");
             fgets(input, sizeof(input), stdin);
             int len = strlen(input);
-            if(len > 0)
+            if(len > 0 && buff_size > len)
             {
               input[len-1] = 0;
-            }
-            ret = read(fd, buffer, atoi(input));
-            if(ret == -1)
-            {
-              //printf("read fail or no data is available\n");
-              continue;
-            }
-            else
-            {
-              printf("read from device = %s, size = %ld\n", buffer, strlen(buffer));
-              memset(buffer, 0, strlen(buffer));
+              ret = read(fd, buffer, atoi(input));
+              if(ret == -1)
+              {
+                //printf("read fail or no data is available\n");
+                continue;
+              }
+              else
+              {
+                printf("read from device = %s, size = %ld\n", buffer, strlen(buffer));
+                memset(buffer, 0, strlen(buffer));
+              }
             }
         } while(1); // read infinitly       
     }
