@@ -12,14 +12,14 @@
 #define buff_size 256
 
 struct pollfd pfds_write = {
-      .fd = fd,
-      .events = POLLOUT,
-    };
+  .fd = fd,
+  .events = POLLOUT,
+};
 
-    struct pollfd pfds_read = {
-      .fd = fd,
-      .events = POLLIN,
-    };
+struct pollfd pfds_read = {
+  .fd = fd,
+  .events = POLLIN,
+};
     
 
 int main(int argc, char** argv)
@@ -41,95 +41,80 @@ int main(int argc, char** argv)
 
     if(mode == O_RDONLY)
     {
-      
-    char input[256];
-
-      do
-    {
-      printf("enter how many bytes to read\n");
-      fgets(input, sizeof(input), stdin);
-      int len = strlen(input);
-      if(len > 0)
-      {
-        input[len-1] = 0;
-      }
-      ret = read(fd, buffer, atoi(input));
-      if(ret == -1)
-      {
-        //printf("read fail or no data is available\n");
-        continue;
-      }
-      else
-      {
-        printf("read from device = %s, size = %ld\n", buffer, strlen(buffer));
-        memset(buffer, 0, strlen(buffer));
-      }
-    } while(1); // read infinitly       
- 
+        char input[256];
+        do
+        {
+            printf("enter how many bytes to read\n");
+            fgets(input, sizeof(input), stdin);
+            int len = strlen(input);
+            if(len > 0)
+            {
+              input[len-1] = 0;
+            }
+            ret = read(fd, buffer, atoi(input));
+            if(ret == -1)
+            {
+              //printf("read fail or no data is available\n");
+              continue;
+            }
+            else
+            {
+              printf("read from device = %s, size = %ld\n", buffer, strlen(buffer));
+              memset(buffer, 0, strlen(buffer));
+            }
+        } while(1); // read infinitly       
     }
     else
     {
         do
-    {
-      memset(buffer, 0, sizeof(buffer));
-      if(ch != '\n')
-        printf("enter r/w/p/e\n");
-      scanf("%c", &ch);
-      switch(ch)
-      {
-           /*case 'r': // read
-            while(1) // read infinitly
+        {
+            memset(buffer, 0, sizeof(buffer));
+            if(ch != '\n')
             {
-              ret = read(fd, buffer, buff_size);
-              if(ret == -1)
-              {
-                //printf("read fail or no data is available\n");
-                continue;
-              }
-              printf("read from device = %s\n", buffer);
+               printf("enter r/w/p/e\n");
             }
-            break; */
-           case 'w': // write
-             printf("enter data to write (data)\n");
-             scanf("%s", buffer);      
-             ret = write(fd, buffer, strlen(buffer));
-             if(ret == -1)
-             {
-               printf("write fail\n");
-             }
-             printf("write %s to device, size=%ld\n", buffer, strlen(buffer));  
-             break;
-           case 'p': // poll
-             // polling to check writable
-             rc = poll(&pfds_write, nfds, 0); 
-             if(rc)
-             {
-               printf("writable\n");
-             }  
-             else
-             {
-               printf("currently not writable\n");
-             }
-             // polling to check readable
-             rc = poll(&pfds_read, nfds, 0); 
-             if(rc)
-             {
-               printf("readable\n");
-             }  
-             else
-             {
-               printf("currently not readable\n");
-             }
-             break;
-           case 'e':
-            close(fd);
-            return 0; 
-           default:
-             break; 
-      } 
-      
-    }while(1);
-        
+            scanf("%c", &ch);
+            switch(ch)
+            {
+                 case 'w': // write
+                       printf("enter data to write (data)\n");
+                       scanf("%s", buffer);      
+                       ret = write(fd, buffer, strlen(buffer));
+                       if(ret == -1)
+                       {
+                         printf("write fail\n");
+                       }
+                       printf("write %s to device, size=%ld\n", buffer, strlen(buffer));  
+                       break;
+                 case 'p': // poll
+                       // polling to check writable
+                       rc = poll(&pfds_write, nfds, 0); 
+                       if(rc)
+                       {
+                         printf("writable\n");
+                       }  
+                       else
+                       {
+                         printf("currently not writable\n");
+                       }
+                       // polling to check readable
+                       rc = poll(&pfds_read, nfds, 0); 
+                       if(rc)
+                       {
+                         printf("readable\n");
+                       }  
+                       else
+                       {
+                         printf("currently not readable\n");
+                       }
+                       break;
+                 case 'e':
+                      close(fd);
+                      return 0; 
+                 default:
+                      break; 
+            }          
+        }while(1); 
     }
     close(fd);   
     return 0;
