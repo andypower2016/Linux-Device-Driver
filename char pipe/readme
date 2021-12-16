@@ -1,2 +1,2 @@
 2021/12/15 written by Chuo-Yu Yang
-A char pipe device implemented using kernel memory, device data is designed as a circular queue, the device driver performs blocking I/O and polling operations.
+A char pipe device implemented using kernel memory, device data is designed as a circular queue, the device driver performs blocking I/O and poll operations.
