@@ -24,6 +24,8 @@ struct pollfd pfds_read = {
 
 int main(int argc, char** argv)
 {
+    if(argc < 2)
+      return 0;
     int mode;
     mode = strcmp(argv[1],"r") == 0 ? O_RDONLY : O_WRONLY; 
     int fd = open(DEVICE_NAME, mode);
