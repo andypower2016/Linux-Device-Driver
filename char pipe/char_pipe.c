@@ -35,7 +35,7 @@ static struct char_pipe *char_p_device = NULL; // A single char_pipe device
 dev_t char_p_dev;
 static int char_p_major_num;
 static int char_p_minor_num = 0;	
-static int char_p_nr_devs = 1;	// number of devices
+static int char_p_nr_devs = 4;	// number of devices
 static int char_p_buffer = 5;   // pipe buffer size
 
 module_param(char_p_nr_devs, int, S_IRUGO);
@@ -141,7 +141,7 @@ static int char_p_release(struct inode *inode, struct file *filp)
 	   kfree(dev->buffer);
 	   dev->buffer = NULL; /* the other fields are not checked on open */
 	}
-	if(dev->nwriters == 0 && isEmpty(dev)) // if there are no writers and no data, set wait_flag to 0
+	if(dev->nwriters == 0 && empty(dev)) // if there are no writers and no data, set wait_flag to 0
     {
        wait_flag = 0;
     }
@@ -170,7 +170,7 @@ static ssize_t char_p_read(struct file *filp, char __user *buf, size_t count,
 		    return -EAGAIN;
 		}
 		DBG("pid (%d,\"%s\") reading: going to sleep\n", current->pid, current->comm);
-		if (wait_event_interruptible(dev->inq, isEmpty(dev) == 0))
+		if (wait_event_interruptible(dev->inq, empty(dev) == 0))
 			return -ERESTARTSYS; 
 	
 		if (mutex_lock_interruptible(&dev->lock))
@@ -380,7 +380,7 @@ struct file_operations char_pipe_fops =
  */
 static void char_p_setup_cdev(struct char_pipe *dev, int index)
 {
-	int err, devno = char_p_dev + index;
+	int err, devno = MKDEV(char_p_major_num, index);
     
 	cdev_init(&dev->cdev, &char_pipe_fops);
 	dev->cdev.owner = THIS_MODULE;
@@ -419,6 +419,7 @@ void char_p_cleanup(void)
 {
 	if(char_p_device)
 	{
+		int i;
 	   for (i = 0; i < char_p_nr_devs; ++i) 
 	   {
 		cdev_del(&char_p_device[i].cdev);

@@ -4,4 +4,7 @@ module="char_pipe"
 major_device="char_pipe"
 
 sudo rmmod $module
-sudo rm -f /dev/$major_device
+sudo rm -f /dev/${major_device}0
+sudo rm -f /dev/${major_device}1
+sudo rm -f /dev/${major_device}2
+sudo rm -f /dev/${major_device}3
