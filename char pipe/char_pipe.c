@@ -237,13 +237,9 @@ static int spacefree(struct char_pipe *dev)
 	{
 	   return dev->buffersize - (dev->rear-dev->front) - 1;
 	}
-	else if(dev->rear == dev->front && dev->rear == dev->buffersize - 1)
+	else if(dev->rear == dev->front && dev->rear <= dev->buffersize - 1)
 	{
-      return dev->buffersize - 1;
-	}
-	else if(dev->rear == dev->front && dev->rear < dev->buffersize - 1)
-	{
-      return dev->buffersize - dev->rear - 1;
+           return dev->buffersize - 1;
 	}
 	return dev->front - dev->rear - 1;
 }
