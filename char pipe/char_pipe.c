@@ -190,8 +190,8 @@ static ssize_t char_p_read(struct file *filp, char __user *buf, size_t count,
 	}
 	else // rear == front (one bye of data left)
 	{
-	        count = 1;
-        }
+	   count = 1;
+   }
 	
 	if (copy_to_user(buf, &dev->buffer[dev->front], count)) 
 	{
@@ -232,9 +232,17 @@ static int spacefree(struct char_pipe *dev)
 	else if(full(dev))
 	   return 0;
 
-	if(dev->rear >= dev->front)
+	if(dev->rear > dev->front)
 	{
 	   return dev->buffersize - (dev->rear-dev->front) - 1;
+	}
+	else if(dev->rear == dev->front && dev->rear == dev->buffersize - 1)
+	{
+      return dev->buffersize - 1;
+	}
+	else if(dev->rear == dev->front && dev->rear < dev->buffersize - 1)
+	{
+      return dev->buffersize - dev->rear - 1;
 	}
 	return dev->front - dev->rear - 1;
 }
