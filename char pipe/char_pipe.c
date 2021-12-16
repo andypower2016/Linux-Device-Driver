@@ -190,6 +190,7 @@ static ssize_t char_p_read(struct file *filp, char __user *buf, size_t count,
 	}
 	else // rear == front (one bye of data left)
 	{
+		DBG("pid (%d,\"%s\") reading: one data left=%c\n", current->pid, current->comm, dev->buffer[dev->front]);
 	   count = 1;
    }
 	
