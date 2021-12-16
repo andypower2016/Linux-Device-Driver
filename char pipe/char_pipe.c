@@ -38,6 +38,8 @@ static int char_p_minor_num = 0;
 static int char_p_nr_devs = 1;	// number of devices
 static int char_p_buffer = 5;   // pipe buffer size
 
+module_param(char_p_nr_devs, int, S_IRUGO);
+
 // performing blocking on open
 static wait_queue_head_t open_wait_queue;
 static int wait_flag = 0;
@@ -346,9 +348,13 @@ static long int ioctl(struct file *file, unsigned cmd, unsigned long arg)
 			break;
 		case RD_VALUE:		
 			if(copy_to_user((char *) arg, dev->buffer, strlen(dev->buffer))) 
+			{
 				DBG("Error copying data to user!");
+			}
 			else
+			{
 				DBG("The data was copied!");
+			}
 			break;
 		default:
 			break;
@@ -372,9 +378,9 @@ struct file_operations char_pipe_fops =
 /*
  * Set up a cdev entry.
  */
-static void char_p_setup_cdev(struct char_pipe *dev)
+static void char_p_setup_cdev(struct char_pipe *dev, int index)
 {
-	int err, devno = char_p_dev;
+	int err, devno = char_p_dev + index;
     
 	cdev_init(&dev->cdev, &char_pipe_fops);
 	dev->cdev.owner = THIS_MODULE;
@@ -392,11 +398,16 @@ int char_p_init(dev_t dev)
 {
 	char_p_device = kmalloc(char_p_nr_devs * sizeof(struct char_pipe), GFP_KERNEL);
 	memset(char_p_device, 0, char_p_nr_devs * sizeof(struct char_pipe));
-	init_waitqueue_head(&(char_p_device->inq));
-	init_waitqueue_head(&(char_p_device->outq));
-	mutex_init(&char_p_device->lock);
-	char_p_setup_cdev(char_p_device);
 	init_waitqueue_head(&open_wait_queue);
+	
+	int i;
+	for (i = 0; i < char_p_nr_devs; ++i) 
+	{
+	   init_waitqueue_head(&(char_p_device[i].inq));
+	   init_waitqueue_head(&(char_p_device[i].outq));
+	   mutex_init(&char_p_device[i].lock);
+	   char_p_setup_cdev(&char_p_device[i], i);
+	}
 	return 0;
 }
 
@@ -408,10 +419,13 @@ void char_p_cleanup(void)
 {
 	if(char_p_device)
 	{
-		cdev_del(&char_p_device->cdev);
-		kfree(char_p_device->buffer);
-		kfree(char_p_device);	
-		char_p_device = NULL; 
+	   for (i = 0; i < char_p_nr_devs; ++i) 
+	   {
+		cdev_del(&char_p_device[i].cdev);
+	   	kfree(char_p_device[i].buffer);   
+	   }
+	   kfree(char_p_device);	
+	   char_p_device = NULL; 
 	}
 	unregister_chrdev_region(char_p_dev, char_p_nr_devs);
 }
