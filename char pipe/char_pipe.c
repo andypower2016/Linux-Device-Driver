@@ -43,11 +43,11 @@ static wait_queue_head_t open_wait_queue;
 static int wait_flag = 0;
 
 // for circular queue
-static int isEmpty(struct char_pipe* dev)
+static int empty(struct char_pipe* dev)
 {
 	return dev->front == -1 ? 1 : 0;
 }
-static int isFull(struct char_pipe* dev)
+static int full(struct char_pipe* dev)
 {
 	return (dev->front == 0 && dev->rear == dev->buffersize - 1) || ((dev->rear+1) == dev->front);
 }
@@ -159,7 +159,7 @@ static ssize_t char_p_read(struct file *filp, char __user *buf, size_t count,
 	if (mutex_lock_interruptible(&dev->lock))
 		return -ERESTARTSYS;
 
-	while (isEmpty(dev)) 
+	while (empty(dev)) 
 	{ 
 		mutex_unlock(&dev->lock); 
 		if (filp->f_flags & O_NONBLOCK)
@@ -225,9 +225,9 @@ static ssize_t char_p_read(struct file *filp, char __user *buf, size_t count,
 /* How much space is free? */
 static int spacefree(struct char_pipe *dev)
 {
-	if (isEmpty(dev))
+	if (empty(dev))
 	   return dev->buffersize;
-	else if(isFull(dev))
+	else if(full(dev))
 	   return 0;
 
 	if(dev->rear >= dev->front)
@@ -314,7 +314,7 @@ static unsigned int char_p_poll(struct file *filp, poll_table *wait)
 	mutex_lock(&dev->lock);
 	poll_wait(filp, &dev->inq,  wait);
 	poll_wait(filp, &dev->outq, wait);
-	if (isEmpty(dev) == 0)
+	if (empty(dev) == 0)
 	{
 		mask |= POLLIN | POLLRDNORM;	/* readable */
 		DBG("pid (%d,\"%s\") polling readable \n",current->pid, current->comm);
