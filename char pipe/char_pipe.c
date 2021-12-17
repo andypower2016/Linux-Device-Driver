@@ -156,6 +156,9 @@ static int char_p_release(struct inode *inode, struct file *filp)
 static ssize_t char_p_read(struct file *filp, char __user *buf, size_t count,
                 loff_t *f_pos)
 {
+	if(count <= 0)
+	   return count;
+	
 	struct char_pipe *dev = filp->private_data;
 
 	if (mutex_lock_interruptible(&dev->lock))
@@ -184,7 +187,7 @@ static ssize_t char_p_read(struct file *filp, char __user *buf, size_t count,
 	}
 	else if(dev->rear < dev->front)
 	{ 
-		size_t gap = (size_t)(dev->buffersize - dev->front);
+		size_t gap = (size_t)(dev->buffersize - dev->front); // currently only allow user to read until the end of the buffer (reading circularly is off limits)
 		DBG("pid (%d,\"%s\") reading: (dev->buffersize - dev->front)=%ld\n", current->pid, current->comm, gap);
 		count = min(count, gap);
 	}
@@ -273,6 +276,8 @@ static int char_getwritespace(struct char_pipe *dev, struct file *filp)
 static ssize_t char_p_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
+	if(count <= 0)
+	   return count;
 	struct char_pipe *dev = filp->private_data;
 	int result;
 
@@ -285,9 +290,15 @@ static ssize_t char_p_write(struct file *filp, const char __user *buf, size_t co
 		return result; 
 
 	count = min(count, (size_t) spacefree(dev));
+	// if the buffer is empty, initialize front to 0
 	if(dev->front == -1)
 	{
 		dev->front = 0;
+	}
+	// 0 1 2 3 4 
+	if(dev->rear+count > dev->buffersize-1) // currently only allow user to write to the end of the buffer (writing circularly is off limits)
+	{
+	     count = dev->buffersize-rear-1;
 	}
 	if (copy_from_user(&dev->buffer[dev->rear+1], buf, count)) 
 	{
@@ -313,11 +324,6 @@ static unsigned int char_p_poll(struct file *filp, poll_table *wait)
 {
 	struct char_pipe *dev = filp->private_data;
 	unsigned int mask = 0;
-	/*
-	 * The buffer is circular; it is considered full
-	 * if "wp" is right behind "rp" and empty if the
-	 * two are equal.
-	 */
 	mutex_lock(&dev->lock);
 	poll_wait(filp, &dev->inq,  wait);
 	poll_wait(filp, &dev->outq, wait);
