@@ -298,7 +298,7 @@ static ssize_t char_p_write(struct file *filp, const char __user *buf, size_t co
 	// 0 1 2 3 4 
 	if(dev->rear+count > dev->buffersize-1) // currently only allow user to write to the end of the buffer (writing circularly is off limits)
 	{
-	     count = dev->buffersize-rear-1;
+	     count = dev->buffersize-dev->rear-1;
 	}
 	if (copy_from_user(&dev->buffer[dev->rear+1], buf, count)) 
 	{
