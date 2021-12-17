@@ -29,7 +29,7 @@ struct char_pipe
 	  struct mutex lock;                 /* mutual exclusion mutex */
 	  struct cdev cdev;                  /* Char device structure */
 };
-static struct char_pipe *char_p_device = NULL; // A single char_pipe device
+struct char_pipe *char_p_device = NULL; // A single char_pipe device
 
 #define CHAR_PIPE "char_pipe"
 dev_t char_p_dev;
