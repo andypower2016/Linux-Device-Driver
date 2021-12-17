@@ -2,5 +2,5 @@
 
 Description
 (1) char_pipe.c : A char pipe device implemented using kernel memory, device data is designed as a circular queue, the device driver performs blocking I/O and poll operations.
-                A module_param is specified for allocating an ammount of char_pipe device.
-(2) usr_pipe.c : A user program that accesses the char_pipe device and performs read/write blocking and polling operations.
+                  A module_param is specified for allocating an ammount of char_pipe device.
+(2) usr_pipe.c : A user program that accesses the char_pipe device and performs blocking read/write and polling operations.
