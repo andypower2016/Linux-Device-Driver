@@ -1,0 +1,8 @@
+# Ubuntu build kernel module
+
+
+ (1) install nessesary packages
+     sudo apt-get install libssl-dev build-essential ncurses-dev xz-utils kernel-package
+ (2) check current linux header and install
+     apt-cache search linux-headers-$(uname -r)
+     sudo apt install linux-headers-$(uname -r)-generic
