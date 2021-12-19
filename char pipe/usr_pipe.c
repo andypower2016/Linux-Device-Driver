@@ -62,7 +62,7 @@ int main(int argc, char** argv)
               else
               {
                 printf("read from device = %s, size = %ld\n", buffer, strlen(buffer));
-                memset(buffer, 0, strlen(buffer));
+                memset(buffer, 0, sizeof(buffer));
               }
             }
         } while(1); // read infinitly       
