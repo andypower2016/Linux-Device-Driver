@@ -24,22 +24,24 @@ struct pollfd pfds_read = {
 
 int main(int argc, char** argv)
 {
-    if(argc < 2)
-      return 0;
     int mode;
-    mode = strcmp(argv[1],"r") == 0 ? O_RDONLY : O_WRONLY; 
-    int fd = open(DEVICE_NAME, mode);
-    if(fd == -1) 
-    {
-       printf("Opening device fail !\n");
-       return -1;
-    }
-    
+    int fd;
     char buffer[buff_size];
     char ch;
     int ret;
     int rc;
     int nfds = 1; // number of pfds, I use one in this example.
+  
+    if(argc < 2)
+      return 0;
+    
+    mode = strcmp(argv[1],"r") == 0 ? O_RDONLY : O_WRONLY; 
+    fd = open(DEVICE_NAME, mode);
+    if(fd == -1) 
+    {
+       printf("Opening device fail !\n");
+       return -1;
+    }
 
     if(mode == O_RDONLY)
     {
